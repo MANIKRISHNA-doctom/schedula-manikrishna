@@ -39,6 +39,11 @@ export class Doctor {
   })
   experience: number;
 
+  @Column({
+    default: 'DOCTOR',
+  })
+  role: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

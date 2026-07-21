@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
 
 import { User } from 'src/users/users.entity';
 import { Doctor } from 'src/doctor/doctor.entity';
@@ -20,7 +21,9 @@ private userRepository: Repository<User>,
 
 
 @InjectRepository(Doctor)
-private doctorRepository: Repository<Doctor>
+private doctorRepository: Repository<Doctor> ,
+
+private readonly jwtService: JwtService,
 
 ){}
 
@@ -89,7 +92,16 @@ async signup(dto: SignupDto) {
       experience,
     });
 
-    return await this.doctorRepository.save(doctor);
+    const savedDoctor = await this.doctorRepository.save(doctor);
+
+    return {
+        message: 'Account created successfully.',
+        user: {
+            id: savedDoctor.id,
+            fullName: savedDoctor.fullName,
+            email: savedDoctor.email,
+        },
+     };
   }
 
   // Save patient
@@ -100,67 +112,77 @@ async signup(dto: SignupDto) {
     password: hashedPassword,
   });
 
-  return await this.userRepository.save(user);
+  const savedUser = await this.userRepository.save(user);
+  return {
+    message: 'Account created successfully.',
+    user: {
+        id: savedUser.id,
+        fullName: savedUser.fullName,
+        email: savedUser.email,
+    },
+  };
 }
 
 
 
 // SIGNIN
 
-async signin(dto:SigninDto){
+async signin(dto: SigninDto) {
 
+  const { email, password } = dto;
 
-let account;
+  if (!email || !password) {
+    throw new BadRequestException('Email and password are required.');
+  }
 
+  let account;
+  let role = 'PATIENT';
 
-account = await this.userRepository.findOne({
-where:{
-email:dto.email
-}
-});
+  account = await this.userRepository.findOne({
+    where: { email },
+  });
 
+  if (!account) {
+    account = await this.doctorRepository.findOne({
+      where: { email },
+    });
 
-if(!account){
+    if (account) {
+      role = 'DOCTOR';
+    }
+  }
 
-account = await this.doctorRepository.findOne({
-where:{
-email:dto.email
-}
-});
+  if (!account) {
+    throw new BadRequestException('Invalid email or password.');
+  }
 
-}
+  const isPasswordValid = await bcrypt.compare(
+    password,
+    account.password,
+  );
 
+  if (!isPasswordValid) {
+    throw new BadRequestException('Invalid email or password.');
+  }
 
-if(!account){
+  const payload = {
+    sub: account.id,
+    email: account.email,
+    role,
+  };
 
-throw new BadRequestException(
-'Invalid email or password'
-);
+  const accessToken = await this.jwtService.signAsync(payload);
 
-}
-
-
-
-const isPasswordValid = await bcrypt.compare(
-dto.password,
-account.password
-);
-
-
-if(!isPasswordValid){
-
-throw new BadRequestException(
-'Invalid email or password'
-);
-
-}
-
-return {
-message:"Login successful",
-user:account
-};
-
-
+  return {
+    message: 'Login successful.',
+    accessToken,
+    user: {
+      id: account.id,
+      fullName: account.fullName,
+      email: account.email,
+      role,
+    },
+  };
 }
 
 }
