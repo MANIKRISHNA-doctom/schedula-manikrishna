@@ -27,54 +27,80 @@ private doctorRepository: Repository<Doctor>
 
 // SIGNUP
 
-async signup(dto: SignupDto){
+async signup(dto: SignupDto) {
+  const {
+    fullName,
+    email,
+    mobileNumber,
+    password,
+    role,
+    specialization,
+    experience,
+  } = dto;
 
-const hashedPassword = await bcrypt.hash(dto.password,10);
+  // Validate doctor-specific fields
+  if (role === 'DOCTOR') {
+    if (!specialization || experience === undefined) {
+      throw new BadRequestException(
+        'Specialization and experience are required for doctors.',
+      );
+    }
+  }
 
+  // Check email in users table
+  const userEmail = await this.userRepository.findOne({
+    where: { email },
+  });
 
-if(dto.role === 'DOCTOR'){
+  // Check email in doctors table
+  const doctorEmail = await this.doctorRepository.findOne({
+    where: { email },
+  });
 
+  if (userEmail || doctorEmail) {
+    throw new BadRequestException('Email already registered.');
+  }
 
-const doctor = this.doctorRepository.create({
+  // Check mobile in users table
+  const userMobile = await this.userRepository.findOne({
+    where: { mobileNumber },
+  });
 
-fullName:dto.fullName,
+  // Check mobile in doctors table
+  const doctorMobile = await this.doctorRepository.findOne({
+    where: { mobileNumber },
+  });
 
-email:dto.email,
+  if (userMobile || doctorMobile) {
+    throw new BadRequestException('Mobile number already registered.');
+  }
 
-mobileNumber:dto.mobileNumber,
+  // Hash password
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-password:hashedPassword,
+  // Save doctor
+  if (role === 'DOCTOR') {
+    const doctor = this.doctorRepository.create({
+      fullName,
+      email,
+      mobileNumber,
+      password: hashedPassword,
+      specialization,
+      experience,
+    });
 
-specialization:dto.specialization,
+    return await this.doctorRepository.save(doctor);
+  }
 
-experience:dto.experience
+  // Save patient
+  const user = this.userRepository.create({
+    fullName,
+    email,
+    mobileNumber,
+    password: hashedPassword,
+  });
 
-});
-
-
-return this.doctorRepository.save(doctor);
-
-
-}
-
-
-// PATIENT
-
-const user = this.userRepository.create({
-
-fullName:dto.fullName,
-
-email:dto.email,
-
-mobileNumber:dto.mobileNumber,
-
-password:hashedPassword
-
-});
-
-
-return this.userRepository.save(user);
-
+  return await this.userRepository.save(user);
 }
 
 
@@ -129,7 +155,6 @@ throw new BadRequestException(
 
 }
 
-
 return {
 message:"Login successful",
 user:account
@@ -137,6 +162,5 @@ user:account
 
 
 }
-
 
 }

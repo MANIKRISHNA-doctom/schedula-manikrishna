@@ -9,7 +9,7 @@ import { Doctor } from 'src/doctor/doctor.entity';
   imports : [
     TypeOrmModule.forFeature([
       User,
-      Doctor,
+      Doctor
     ]),
   ],
   providers: [AuthService],
