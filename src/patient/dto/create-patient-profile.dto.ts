@@ -23,9 +23,4 @@ export class CreatePatientProfileDto {
   @IsString()
   basicHealthInformation?: string;
 
-  @IsString()
-  @Matches(/^[6-9]\d{9}$/, {
-    message: 'Mobile number must be a valid 10-digit Indian mobile number',
-  })
-  mobileNumber: string;
 }
