@@ -1,7 +1,15 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsNumber } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsEnum,
+} from 'class-validator';
+
+export enum UserRole {
+  DOCTOR = 'DOCTOR',
+  PATIENT = 'PATIENT',
+}
 
 export class SignupDto {
-
   @IsNotEmpty()
   fullName: string;
 
@@ -14,16 +22,6 @@ export class SignupDto {
   @IsNotEmpty()
   password: string;
 
-  @IsNotEmpty()
-  role: string;
-
-
-  // Only doctor fields
-  @IsOptional()
-  @IsString()
-  specialization?: string;
-
-  @IsOptional()
-  @IsNumber()
-  experience?: number;
+  @IsEnum(UserRole)
+  role: UserRole;
 }

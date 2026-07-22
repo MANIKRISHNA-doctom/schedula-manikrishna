@@ -2,32 +2,30 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  OneToOne,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
-
-
 @Entity('users')
 export class User {
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 100 })
+  @Column()
   fullName: string;
 
   @Column({ unique: true })
   email: string;
 
-  @Column({ unique: true, length: 15 })
+  @Column({ unique: true })
   mobileNumber: string;
 
   @Column()
   password: string;
 
-  @Column({
-    default: 'PATIENT',
-  })
+  @Column()
   role: string;
 
   @CreateDateColumn()

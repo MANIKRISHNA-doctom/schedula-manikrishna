@@ -5,14 +5,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
-import { User } from 'src/users/users.entity';
-import { Doctor } from 'src/doctor/doctor.entity';
+import { User } from './user.entity';
+import { DoctorProfile } from 'src/doctor/doctor.entity';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Doctor]),
+    TypeOrmModule.forFeature([User]),
 
     JwtModule.register({
       secret: 'hospital_secret_key',

@@ -10,8 +10,8 @@ import {
 
 import { User } from '../auth/user.entity';
 
-@Entity('doctor_profiles')
-export class DoctorProfile {
+@Entity('patient_profiles')
+export class PatientProfile {
 
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,23 +21,21 @@ export class DoctorProfile {
   user: User;
 
   @Column()
-  specialization: string;
+  age: number;
 
   @Column()
-  experience: number;
+  gender: string;
 
   @Column()
-  qualification: string;
+  contactDetails: string;
 
-  @Column('decimal')
-  consultationFee: number;
+  @Column({
+    nullable: true,
+    type: 'text',
+  })
+   basicHealthInformation: string;
 
-  @Column()
-  availability: string;
-
-  @Column('text')
-  profileDetails: string;
-
+ 
   @CreateDateColumn()
   createdAt: Date;
 
