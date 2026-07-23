@@ -1,3 +1,12 @@
+# Doctor Appointment System
+
+## Project Setup
+
+- Framework: NestJS
+- Task: Initial project setup
+- Branch: feature/project-setup
+
+---
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
