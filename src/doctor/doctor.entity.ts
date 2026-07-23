@@ -29,12 +29,6 @@ export class DoctorProfile {
   @Column()
   qualification: string;
 
-  @Column('decimal')
-  consultationFee: number;
-
-  @Column()
-  availability: string;
-
   @Column('text')
   profileDetails: string;
 

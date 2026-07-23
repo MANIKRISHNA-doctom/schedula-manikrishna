@@ -65,8 +65,6 @@ return {
     specialization: savedProfile.specialization,
     experience: savedProfile.experience,
     qualification: savedProfile.qualification,
-    consultationFee: savedProfile.consultationFee,
-    availability: savedProfile.availability,
     profileDetails: savedProfile.profileDetails,
   },
 };
@@ -106,8 +104,6 @@ async getProfile(user: any) {
     specialization: profile.specialization,
     experience: profile.experience,
     qualification: profile.qualification,
-    consultationFee: profile.consultationFee,
-    availability: profile.availability,
     profileDetails: profile.profileDetails,
   },
 };
@@ -149,8 +145,6 @@ return {
     specialization: updatedProfile.specialization,
     experience: updatedProfile.experience,
     qualification: updatedProfile.qualification,
-    consultationFee: updatedProfile.consultationFee,
-    availability: updatedProfile.availability,
     profileDetails: updatedProfile.profileDetails,
   },
 };

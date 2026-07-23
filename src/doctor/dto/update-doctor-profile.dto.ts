@@ -20,15 +20,6 @@ export class UpdateDoctorProfileDto {
   qualification?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  consultationFee?: number;
-
-  @IsOptional()
-  @IsString()
-  availability?: string;
-
-  @IsOptional()
   @IsString()
   profileDetails?: string;
 }

@@ -18,14 +18,6 @@ export class CreateDoctorProfileDto {
   @IsNotEmpty()
   qualification: string;
 
-  @IsNumber()
-  @Min(0)
-  consultationFee: number;
-
-  @IsString()
-  @IsNotEmpty()
-  availability: string;
-
   @IsString()
   @IsNotEmpty()
   profileDetails: string;
