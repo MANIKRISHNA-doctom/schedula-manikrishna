@@ -241,9 +241,19 @@ private readonly appointmentRepository: Repository<Appointment>,
   }
 
   return {
-    message: 'Recurring availability created successfully.',
-    data: saved,
-  };
+  message: 'Recurring availability created successfully.',
+  data: {
+    id: saved.id,
+    dayOfWeek: saved.dayOfWeek,
+    schedulingType: saved.schedulingType,
+    startTime: saved.startTime,
+    endTime: saved.endTime,
+    duration: saved.duration,
+    bufferTime: saved.bufferTime,
+    maxCapacity: saved.maxCapacity,
+  },
+};
+
 }
 
 async updateRecurring(
@@ -335,9 +345,18 @@ async updateRecurring(
   }
 
   return {
-    message: 'Recurring availability updated successfully.',
-    data: updated,
-  };
+  message: 'Recurring availability updated successfully.',
+  data: {
+    id: updated.id,
+    dayOfWeek: updated.dayOfWeek,
+    schedulingType: updated.schedulingType,
+    startTime: updated.startTime,
+    endTime: updated.endTime,
+    duration: updated.duration,
+    bufferTime: updated.bufferTime,
+    maxCapacity: updated.maxCapacity,
+  },
+};
 }
 
  async getRecurring(user: any) {
@@ -358,7 +377,16 @@ async updateRecurring(
   return {
     message: 'Recurring availability fetched successfully.',
     count: availability.length,
-    data: availability,
+    data: availability.map((slot) => ({
+  id: slot.id,
+  dayOfWeek: slot.dayOfWeek,
+  schedulingType: slot.schedulingType,
+  startTime: slot.startTime,
+  endTime: slot.endTime,
+  duration: slot.duration,
+  bufferTime: slot.bufferTime,
+  maxCapacity: slot.maxCapacity,
+})),
   };
 }
 
@@ -523,14 +551,19 @@ async updateRecurring(
 
 
 
-  return {
-
-    message:
-    'Custom availability created successfully.',
-
-    data:saved,
-
-  };
+ return {
+  message: 'Custom availability created successfully.',
+  data: {
+    id: saved.id,
+    date: saved.date,
+    schedulingType: saved.schedulingType,
+    startTime: saved.startTime,
+    endTime: saved.endTime,
+    duration: saved.duration,
+    bufferTime: saved.bufferTime,
+    maxCapacity: saved.maxCapacity,
+  },
+};
 
 }
 

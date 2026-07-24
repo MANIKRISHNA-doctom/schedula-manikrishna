@@ -170,8 +170,8 @@ private async checkDuplicateBooking(
           availabilityId: availability.id,
           timeWindow: `${availability.startTime} - ${availability.endTime}`,
           capacity: availability.maxCapacity,
-          available:
-            `${availability.maxCapacity - availability.bookedPatients}/${availability.maxCapacity}`,
+          availableSlots:
+            `${availability.maxCapacity - availability.bookedPatients}`,
         });
 
       }
@@ -418,10 +418,23 @@ if (slot.availability.date !== dto.appointmentDate) {
 
  });
 
+const savedAppointment =
+await this.appointmentRepository.save(
+  appointment,
+);
 
- return await this.appointmentRepository.save(
- appointment
- );
+return {
+  message: 'Appointment booked successfully.',
+  data: {
+    appointmentId: savedAppointment.id,
+    doctorId: doctor.id,
+    patientId: patient.id,
+    appointmentDate: savedAppointment.appointmentDate,
+    schedulingType: savedAppointment.schedulingType,
+    tokenNumber: savedAppointment.tokenNumber,
+    status: savedAppointment.status,
+  },
+};
 
 
 }
@@ -488,9 +501,23 @@ this.validateRecurringDay(
       status: 'BOOKED',
     });
 
-  return await this.appointmentRepository.save(
-    appointment,
-  );
+ const savedAppointment =
+await this.appointmentRepository.save(
+  appointment,
+);
+
+return {
+  message: 'Appointment booked successfully.',
+  data: {
+    appointmentId: savedAppointment.id,
+    doctorId: doctor.id,
+    patientId: patient.id,
+    appointmentDate: savedAppointment.appointmentDate,
+    schedulingType: savedAppointment.schedulingType,
+    tokenNumber: savedAppointment.tokenNumber,
+    status: savedAppointment.status,
+  },
+};
 }
 
 
@@ -578,9 +605,23 @@ if (
 
 
 
- return await this.appointmentRepository.save(
- appointment
- );
+ const savedAppointment =
+await this.appointmentRepository.save(
+  appointment,
+);
+
+return {
+  message: 'Appointment booked successfully.',
+  data: {
+    appointmentId: savedAppointment.id,
+    doctorId: doctor.id,
+    patientId: patient.id,
+    appointmentDate: savedAppointment.appointmentDate,
+    schedulingType: savedAppointment.schedulingType,
+    tokenNumber: savedAppointment.tokenNumber,
+    status: savedAppointment.status,
+  },
+};
 
 
 }
@@ -662,9 +703,23 @@ if (
       status: 'BOOKED',
     });
 
-  return await this.appointmentRepository.save(
-    appointment,
-  );
+ const savedAppointment =
+await this.appointmentRepository.save(
+  appointment,
+);
+
+return {
+  message: 'Appointment booked successfully.',
+  data: {
+    appointmentId: savedAppointment.id,
+    doctorId: doctor.id,
+    patientId: patient.id,
+    appointmentDate: savedAppointment.appointmentDate,
+    schedulingType: savedAppointment.schedulingType,
+    tokenNumber: savedAppointment.tokenNumber,
+    status: savedAppointment.status,
+  },
+};
 }
 
 throw new BadRequestException(
