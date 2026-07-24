@@ -1,9 +1,10 @@
 import {
   IsEnum,
-  IsInt,
   IsNotEmpty,
-  IsString,
+  IsOptional,
+  IsInt,
   Min,
+  Matches,
 } from 'class-validator';
 
 export class CreateRecurringAvailabilityDto {
@@ -19,19 +20,31 @@ export class CreateRecurringAvailabilityDto {
   ])
   dayOfWeek: string;
 
-  @IsString()
   @IsNotEmpty()
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
   startTime: string;
 
-  @IsString()
   @IsNotEmpty()
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
   endTime: string;
 
+  @IsEnum(['STREAM', 'WAVE'])
+  schedulingType: string;
+
+  // STREAM
+  @IsOptional()
   @IsInt()
   @Min(1)
-  capacity: number;
+  duration?: number;
 
+  @IsOptional()
   @IsInt()
-  @Min(5)
-  duration: number;
+  @Min(0)
+  bufferTime?: number;
+
+  // WAVE
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxCapacity?: number;
 }

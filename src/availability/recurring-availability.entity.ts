@@ -34,6 +34,12 @@ export class RecurringAvailability {
   dayOfWeek: string;
 
   @Column({
+    type: 'enum',
+    enum: ['STREAM', 'WAVE'],
+  })
+  schedulingType: string;
+
+  @Column({
     type: 'time',
   })
   startTime: string;
@@ -45,13 +51,21 @@ export class RecurringAvailability {
 
   @Column({
     type: 'int',
+    nullable: true,
   })
-  capacity: number;
+  duration: number;
 
   @Column({
     type: 'int',
+    nullable: true,
   })
-  duration: number;
+  bufferTime: number;
+
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
+  maxCapacity: number;
 
   @CreateDateColumn()
   createdAt: Date;
