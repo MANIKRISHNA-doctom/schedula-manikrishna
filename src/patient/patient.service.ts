@@ -115,11 +115,44 @@ private async checkDuplicateBooking(
   date: string,
 ) {
 
-  const day = new Date(date)
+  const doctor = await this.userRepository.findOne({
+  where: {
+    id: doctorId,
+    role: 'DOCTOR',
+  },
+});
+
+if (!doctor) {
+  throw new NotFoundException(
+    'Doctor not found.',
+  );
+}
+
+//Validate date
+const parsedDate = new Date(date);
+
+if (isNaN(parsedDate.getTime())) {
+  throw new BadRequestException(
+    'Invalid date format.',
+  );
+}
+  const day = parsedDate
     .toLocaleDateString('en-US', {
       weekday: 'long',
     })
     .toUpperCase();
+
+    //Past date
+    const today = new Date();
+today.setHours(0,0,0,0);
+
+parsedDate.setHours(0,0,0,0);
+
+if(parsedDate < today){
+  throw new BadRequestException(
+    'Cannot fetch availability for past dates.'
+  );
+}
 
   // Check custom availability first
   const custom = await this.customRepository.find({

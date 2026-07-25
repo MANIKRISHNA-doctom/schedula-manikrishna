@@ -117,6 +117,23 @@ private readonly appointmentRepository: Repository<Appointment>,
   }
 }
 
+//Validate date (Handle past date)
+private validateCustomDate(date: string) {
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const selectedDate = new Date(date);
+  selectedDate.setHours(0, 0, 0, 0);
+
+  if (selectedDate < today) {
+    throw new BadRequestException(
+      'Cannot create availability for a past date.',
+    );
+  }
+
+}
+
   private timeToMinutes(time: string): number {
     const [h, m] = time.split(':').map(Number);
 
@@ -432,6 +449,9 @@ async updateRecurring(
 ) {
 
   const doctor = await this.getDoctor(user);
+
+  // Validate date
+this.validateCustomDate(dto.date);
 
   // Validate time
   this.validateTime(
