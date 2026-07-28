@@ -31,7 +31,7 @@ export class CreateRecurringAvailabilityDto {
   @IsEnum(['STREAM', 'WAVE'])
   schedulingType: string;
 
-  // STREAM
+  // WAVE
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -42,7 +42,7 @@ export class CreateRecurringAvailabilityDto {
   @Min(0)
   bufferTime?: number;
 
-  // WAVE
+  // STREAM
   @IsOptional()
   @IsInt()
   @Min(1)

@@ -24,7 +24,7 @@ export class CreateCustomAvailabilityDto {
   @IsEnum(['STREAM', 'WAVE'])
   schedulingType: string;
 
-  // STREAM
+  // WAVE
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -35,7 +35,7 @@ export class CreateCustomAvailabilityDto {
   @Min(0)
   bufferTime?: number;
 
-  // WAVE
+  // STREAM
   @IsOptional()
   @IsInt()
   @Min(1)
