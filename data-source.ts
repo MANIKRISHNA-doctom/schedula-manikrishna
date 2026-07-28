@@ -6,7 +6,7 @@ import { RecurringAvailability } from './src/availability/recurring-availability
 import { CustomAvailability } from './src/availability/custom-availability.entity';
 import { CustomSlot } from './src/availability/custom-slot.entity';
 import { RecurringSlot } from './src/availability/recurring-slot.entity';
-import { Appointment } from './src/appointment_booking/appointment.entity';
+import { Appointment } from './src/appointment/appointment.entity';
 
 
 export const AppDataSource = new DataSource({

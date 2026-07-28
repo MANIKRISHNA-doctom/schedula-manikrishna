@@ -16,18 +16,11 @@ import { RolesGuard } from '../auth/roles.guard';
 import { PatientService } from './patient.service';
 import { CreatePatientProfileDto } from './dto/create-patient-profile.dto';
 import { UpdatePatientProfileDto } from './dto/update-patient-profile.dto';
-import { CreateAppointmentDto } from 'src/appointment_booking/dto/create-appointment.dto';
+import { CreateAppointmentDto } from 'src/appointment/dto/create-appointment.dto';
 
 @Controller('patient')
 export class PatientController {
   constructor(private readonly patientService: PatientService) {}
-
-  @Post('appointment')
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('PATIENT')
-  bookAppointment(@Req() req, @Body() dto: CreateAppointmentDto) {
-    return this.patientService.bookAppointment(req.user, dto);
-  }
 
   @Get('doctor/:doctorId/availability')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
