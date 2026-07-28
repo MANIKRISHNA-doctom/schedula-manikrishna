@@ -596,9 +596,7 @@ async bookAppointment(
       );
     }
 
-    // IMPORTANT:
-    // Count only bookings for THIS DATE.
-    // Do not use availability.bookedPatients.
+    // Count only bookings for this date. Do not use availability.bookedPatients
     const bookedCount =
       await this.appointmentRepository.count({
         where: {
@@ -678,10 +676,7 @@ async bookAppointment(
     };
   }
 
-  // ==================================================
   // WAVE BOOKING
-  // EXACT SLOT
-  // ==================================================
 
   // CUSTOM WAVE SLOT
   if (dto.customSlotId) {
