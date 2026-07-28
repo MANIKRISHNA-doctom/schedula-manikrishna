@@ -24,7 +24,7 @@ export class AppointmentController {
     private readonly appointmentService: AppointmentService,
   ) {}
 
- @Post('appointment')
+ @Post('booking')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('PATIENT')
   bookAppointment(@Req() req, @Body() dto: CreateAppointmentDto) {
