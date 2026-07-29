@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { AppointmentService } from './appointment.service';
 
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 
 @Controller('appointment')
 export class AppointmentController {
@@ -48,6 +49,21 @@ async cancelAppointment(
   return this.appointmentService.cancelAppointment(
     req.user,
     appointmentId,
+  );
+}
+
+@Patch('patient/:id/reschedule')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('PATIENT')
+async rescheduleAppointment(
+  @Req() req,
+  @Param('id') appointmentId: string,
+  @Body() dto: RescheduleAppointmentDto,
+) {
+  return this.appointmentService.rescheduleAppointment(
+    req.user,
+    appointmentId,
+    dto,
   );
 }
 
