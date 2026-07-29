@@ -37,7 +37,7 @@ export class Appointment {
   })
   appointmentDate: string;
 
-  // STREAM slot
+  // WAVE slot
   @ManyToOne(() => CustomSlot, {
     nullable: true,
   })
@@ -70,7 +70,7 @@ export class Appointment {
   })
   schedulingType: string;
 
-  // Only for WAVE
+  // Only for STREAM
 
   @Column({
     nullable: true,

@@ -9,7 +9,7 @@ import { CustomAvailability } from './custom-availability.entity';
 import { RecurringSlot } from './recurring-slot.entity';
 import { User } from 'src/auth/user.entity';
 import { CustomSlot } from './custom-slot.entity';
-import { Appointment } from 'src/appointment_booking/appointment.entity';
+import { Appointment } from 'src/appointment/appointment.entity';
 
 @Module({
   imports: [

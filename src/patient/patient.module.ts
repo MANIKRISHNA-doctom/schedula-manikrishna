@@ -8,7 +8,7 @@ import { CustomSlot } from 'src/availability/custom-slot.entity';
 import { RecurringSlot } from 'src/availability/recurring-slot.entity';
 import { CustomAvailability } from 'src/availability/custom-availability.entity';
 import { RecurringAvailability } from 'src/availability/recurring-availability.entity';
-import { Appointment } from 'src/appointment_booking/appointment.entity';
+import { Appointment } from 'src/appointment/appointment.entity';
 
 @Module({
   imports: [TypeOrmModule.forFeature([PatientProfile,User,Appointment,CustomSlot,RecurringSlot,CustomAvailability,RecurringAvailability])],

@@ -12,7 +12,7 @@ import { User } from 'src/auth/user.entity';
 
 import { CustomSlot } from './custom-slot.entity';
 import { RecurringSlot } from './recurring-slot.entity';
-import { Appointment } from 'src/appointment_booking/appointment.entity';
+import { Appointment } from 'src/appointment/appointment.entity';
 import { RecurringAvailability } from './recurring-availability.entity';
 import { CustomAvailability } from './custom-availability.entity';
 
