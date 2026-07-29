@@ -21,6 +21,7 @@ import { AvailabilityService } from './availability.service';
 import { CreateRecurringAvailabilityDto } from './dto/create-recurring-availability.dto';
 import { UpdateRecurringAvailabilityDto } from './dto/update-recurring-availability.dto';
 import { CreateCustomAvailabilityDto } from './dto/create-custom-availability.dto';
+import { UpdateCustomAvailabilityDto } from './dto/update-custom-availability.dto';
 
 @Controller('doctor/availability')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -85,6 +86,19 @@ export class AvailabilityController {
       dto,
     );
   }
+
+ @Patch('custom/:id')
+ async updateCustomAvailability(
+  @Req() req,
+  @Param('id') id: string,
+  @Body() dto: UpdateCustomAvailabilityDto,
+) {
+  return this.availabilityService.updateOverride(
+    req.user,
+    id,
+    dto,
+  );
+}
 
   @Get('date')
   getAvailabilityByDate(

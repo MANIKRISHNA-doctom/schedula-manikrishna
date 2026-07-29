@@ -25,6 +25,12 @@ export class CustomAvailability {
   date: string;
 
   @Column({
+    type: 'enum',
+    enum: ['STREAM', 'WAVE'],
+  })
+  schedulingType: string;
+
+  @Column({
     type: 'time',
   })
   startTime: string;
@@ -36,13 +42,27 @@ export class CustomAvailability {
 
   @Column({
     type: 'int',
+    nullable: true,
   })
-  capacity: number;
+  duration: number;
 
   @Column({
     type: 'int',
+    nullable: true,
   })
-  duration: number;
+  bufferTime: number;
+
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
+  maxCapacity: number;
+
+  @Column({
+    type: 'int',
+    default: 0,
+  })
+  bookedPatients: number;
 
   @CreateDateColumn()
   createdAt: Date;

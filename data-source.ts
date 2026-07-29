@@ -4,6 +4,9 @@ import { DoctorProfile } from './src/doctor/doctor.entity';
 import { PatientProfile } from './src/patient/patient.entity';
 import { RecurringAvailability } from './src/availability/recurring-availability.entity';
 import { CustomAvailability } from './src/availability/custom-availability.entity';
+import { CustomSlot } from './src/availability/custom-slot.entity';
+import { RecurringSlot } from './src/availability/recurring-slot.entity';
+import { Appointment } from './src/appointment_booking/appointment.entity';
 
 
 export const AppDataSource = new DataSource({
@@ -25,7 +28,10 @@ export const AppDataSource = new DataSource({
     DoctorProfile,
     PatientProfile,
     RecurringAvailability,
-    CustomAvailability
+    CustomAvailability,
+    CustomSlot,
+    RecurringSlot,
+    Appointment
   ],
 
   migrations: [
