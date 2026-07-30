@@ -749,11 +749,7 @@ async rescheduleAppointment(
   }
 
   // WAVE = EXACT SLOT
-  // =========================================
-
-  // -----------------------------------------
-  // 8. Custom exact slot
-  // -----------------------------------------
+  // 8.Custom exact slot
 
   if (dto.customSlotId) {
     const newSlot =
