@@ -8,7 +8,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest:  (req) => req?.cookies?.access_token ,
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'hospital_secret_key',
+      secretOrKey: process.env.JWT_SECRET ,
     });
   }
 

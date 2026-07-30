@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import { DataSource } from 'typeorm';
+
 import { User } from './src/auth/user.entity';
 import { DoctorProfile } from './src/doctor/doctor.entity';
 import { PatientProfile } from './src/patient/patient.entity';
@@ -8,20 +10,14 @@ import { CustomSlot } from './src/availability/custom-slot.entity';
 import { RecurringSlot } from './src/availability/recurring-slot.entity';
 import { Appointment } from './src/appointment/appointment.entity';
 
-
 export const AppDataSource = new DataSource({
-
   type: 'postgres',
 
-  host: 'localhost',
+  url: process.env.DATABASE_URL,
 
-  port: 5432,
-
-  username: 'postgres',
-
-  password: '9848',
-
-  database: 'hospital_db',
+  ssl: {
+    rejectUnauthorized: false,
+  },
 
   entities: [
     User,
@@ -31,12 +27,10 @@ export const AppDataSource = new DataSource({
     CustomAvailability,
     CustomSlot,
     RecurringSlot,
-    Appointment
+    Appointment,
   ],
 
-  migrations: [
-    'src/migrations/*.ts',
-  ],
+  migrations: ['src/migrations/*.ts'],
+
   synchronize: false,
-
 });
