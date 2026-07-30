@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository} from 'typeorm';
 
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 
 import { Appointment } from './appointment.entity';
 import { User } from 'src/auth/user.entity';
@@ -86,6 +87,36 @@ export class AppointmentService {
       );
     }
   }
+
+  //Release old booking
+private async releaseOldBooking(
+  appointment: Appointment,
+) {
+  // WAVE = exact slot
+  if (appointment.customSlot) {
+    appointment.customSlot.isBooked = false;
+
+    await this.customSlotRepository.save(
+      appointment.customSlot,
+    );
+  }
+  if (
+    appointment.customAvailability &&
+    appointment.schedulingType === 'STREAM'
+  ) {
+    appointment.customAvailability.bookedPatients -= 1;
+
+    if (
+      appointment.customAvailability.bookedPatients < 0
+    ) {
+      appointment.customAvailability.bookedPatients = 0;
+    }
+
+    await this.customRepository.save(
+      appointment.customAvailability,
+    );
+  }
+}
 
 // Book appointment
 async bookAppointment(user: any, dto: CreateAppointmentDto) {
@@ -586,7 +617,6 @@ async getMyAppointments(user: any) {
         appointmentId: appointment.id,
 
         doctor: {
-          id: appointment.doctor.id,
           fullName: appointment.doctor.fullName,
           email:
             appointment.doctor.email,
@@ -610,6 +640,667 @@ async getMyAppointments(user: any) {
       };
     }),
   };
+}
+
+//Reschedule the appointment (Patient)
+async rescheduleAppointment(
+  user: any,
+  appointmentId: string,
+  dto: RescheduleAppointmentDto,
+) {
+  // 1. Find patient
+
+  const patient = await this.userRepository.findOne({
+    where: {
+      id: user.sub,
+      role: 'PATIENT',
+    },
+  });
+
+  if (!patient) {
+    throw new NotFoundException(
+      'Patient not found.',
+    );
+  }
+  // 2. Find existing appointment
+  const appointment =
+    await this.appointmentRepository.findOne({
+      where: {
+        id: appointmentId,
+      },
+      relations: {
+        patient: true,
+        doctor: true,
+        customSlot: {
+          availability: true,
+        },
+        recurringSlot: {
+          availability: true,
+        },
+        customAvailability: true,
+        recurringAvailability: true,
+      },
+    });
+
+  if (!appointment) {
+    throw new NotFoundException(
+      'Appointment not found.',
+    );
+  }
+
+  // 3. Check appointment owner
+
+  if (appointment.patient.id !== patient.id) {
+    throw new ForbiddenException(
+      'You are not authorized to reschedule this appointment.',
+    );
+  }
+
+  // 4. Appointment must be BOOKED
+
+  if (appointment.status !== 'BOOKED') {
+    throw new BadRequestException(
+      'Only booked appointments can be rescheduled.',
+    );
+  }
+
+  // 5. Validate target booking type
+
+  const bookingTypes = [
+    dto.customSlotId,
+    dto.recurringSlotId,
+    dto.customAvailabilityId,
+    dto.recurringAvailabilityId,
+  ].filter(Boolean);
+
+  if (bookingTypes.length !== 1) {
+    throw new BadRequestException(
+      'Provide exactly one new booking type.',
+    );
+  }
+
+  // 6. Validate new date
+
+  this.validateAppointmentDate(
+    dto.appointmentDate,
+  );
+
+  // 7. Existing appointment should not be past
+
+  const oldDate = new Date(
+    appointment.appointmentDate,
+  );
+
+  if (isNaN(oldDate.getTime())) {
+    throw new BadRequestException(
+      'Invalid existing appointment date.',
+    );
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  oldDate.setHours(0, 0, 0, 0);
+
+  if (oldDate < today) {
+    throw new BadRequestException(
+      'Past appointments cannot be rescheduled.',
+    );
+  }
+
+  // WAVE = EXACT SLOT
+  // =========================================
+
+  // -----------------------------------------
+  // 8. Custom exact slot
+  // -----------------------------------------
+
+  if (dto.customSlotId) {
+    const newSlot =
+      await this.customSlotRepository.findOne({
+        where: {
+          id: dto.customSlotId,
+        },
+        relations: {
+          availability: true,
+        },
+      });
+
+    if (!newSlot) {
+      throw new NotFoundException(
+        'New slot not found.',
+      );
+    }
+
+    const availability =
+      newSlot.availability;
+
+    // Doctor validation
+    if (availability.doctor?.id !== appointment.doctor.id) {
+      throw new BadRequestException(
+        'New slot does not belong to this doctor.',
+      );
+    }
+
+    // Must be WAVE because WAVE = exact slot
+    if (availability.schedulingType !== 'WAVE') {
+      throw new BadRequestException(
+        'Selected availability is not an exact-slot schedule.',
+      );
+    }
+
+    // Date must match custom availability
+    if (availability.date !== dto.appointmentDate) {
+      throw new BadRequestException(
+        'Appointment date does not match the selected slot.',
+      );
+    }
+
+    // Same appointment target
+    if (
+      appointment.customSlot?.id === newSlot.id &&
+      appointment.appointmentDate ===
+        dto.appointmentDate
+    ) {
+      throw new BadRequestException(
+        'You are already booked for this slot.',
+      );
+    }
+
+    // Slot availability
+    if (newSlot.isBooked) {
+      throw new BadRequestException(
+        'Selected slot is already booked.',
+      );
+    }
+
+    await this.releaseOldBooking(
+      appointment,
+    );
+
+    newSlot.isBooked = true;
+
+    await this.customSlotRepository.save(
+      newSlot,
+    );
+
+    appointment.customSlot = newSlot;
+    appointment.recurringSlot = undefined;
+    appointment.customAvailability = undefined;
+    appointment.recurringAvailability = undefined;
+
+    appointment.appointmentDate =
+      dto.appointmentDate;
+
+    appointment.schedulingType = 'WAVE';
+    appointment.status = 'BOOKED';
+
+    const updated =
+      await this.appointmentRepository.save(
+        appointment,
+      );
+
+    return {
+      message:
+        'Appointment rescheduled successfully.',
+      data: {
+        appointmentDate:
+          updated.appointmentDate,
+        startTime: newSlot.startTime,
+        endTime: newSlot.endTime,
+        schedulingType:
+          updated.schedulingType,
+        status: updated.status,
+      },
+    };
+  }
+
+
+  // 9. Recurring exact slot
+
+  if (dto.recurringSlotId) {
+    const newSlot =
+      await this.recurringSlotRepository.findOne({
+        where: {
+          id: dto.recurringSlotId,
+        },
+        relations: {
+          availability: true,
+        },
+      });
+
+    if (!newSlot) {
+      throw new NotFoundException(
+        'New slot not found.',
+      );
+    }
+
+    const availability =
+      newSlot.availability;
+
+    // Doctor validation
+    if (availability.doctor.id !== appointment.doctor.id) {
+      throw new BadRequestException(
+        'New slot does not belong to this doctor.',
+      );
+    }
+
+    // WAVE = exact slot
+    if (availability.schedulingType !== 'WAVE') {
+      throw new BadRequestException(
+        'Selected availability is not an exact-slot schedule.',
+      );
+    }
+
+    // Validate recurring day
+    this.validateRecurringDay(
+      dto.appointmentDate,
+      availability.dayOfWeek,
+    );
+
+    // Check same slot for same date
+    if (
+      appointment.recurringSlot?.id === newSlot.id &&
+      appointment.appointmentDate ===
+        dto.appointmentDate
+    ) {
+      throw new BadRequestException(
+        'You are already booked for this slot.',
+      );
+    }
+
+    // Check if slot is booked for selected date
+    const existingBooking =
+      await this.appointmentRepository.findOne({
+        where: {
+          recurringSlot: {
+            id: newSlot.id,
+          },
+          appointmentDate:
+            dto.appointmentDate,
+          status: 'BOOKED',
+        },
+      });
+
+    if (existingBooking) {
+      throw new BadRequestException(
+        'Selected slot is already booked for this date.',
+      );
+    }
+
+    // Release old booking
+    await this.releaseOldBooking(
+      appointment,
+    );
+
+    appointment.customSlot = undefined;
+    appointment.recurringSlot = newSlot;
+    appointment.customAvailability = undefined;
+    appointment.recurringAvailability = undefined;
+
+    appointment.appointmentDate =
+      dto.appointmentDate;
+
+    appointment.schedulingType = 'WAVE';
+    appointment.status = 'BOOKED';
+
+    const updated =
+      await this.appointmentRepository.save(
+        appointment,
+      );
+
+    return {
+      message:
+        'Appointment rescheduled successfully.',
+      data: {
+        appointmentDate:
+          updated.appointmentDate,
+        startTime: newSlot.startTime,
+        endTime: newSlot.endTime,
+        schedulingType:
+          updated.schedulingType,
+        status: updated.status,
+      },
+    };
+  }
+
+// STREAM = TOKEN BASED
+// CUSTOM AVAILABILITY
+
+if (dto.customAvailabilityId) {
+  const availability =
+    await this.customRepository.findOne({
+      where: {
+        id: dto.customAvailabilityId,
+      },
+      relations: {
+        doctor: true,
+      },
+    });
+
+  if (!availability) {
+    throw new NotFoundException(
+      'New availability not found.',
+    );
+  }
+
+  // Make sure availability belongs to same doctor
+  if (
+    availability.doctor.id !==
+    appointment.doctor.id
+  ) {
+    throw new BadRequestException(
+      'New availability does not belong to this doctor.',
+    );
+  }
+
+  // STREAM = token based
+  if (
+    availability.schedulingType !== 'STREAM'
+  ) {
+    throw new BadRequestException(
+      'Selected availability is not token-based scheduling.',
+    );
+  }
+
+  // Custom availability is for one specific date
+  if (
+    availability.date !==
+    dto.appointmentDate
+  ) {
+    throw new BadRequestException(
+      'Appointment date does not match availability.',
+    );
+  }
+
+  // Prevent same availability/date
+  if (
+    appointment.customAvailability?.id ===
+      availability.id &&
+    appointment.appointmentDate ===
+      dto.appointmentDate
+  ) {
+    throw new BadRequestException(
+      'You are already booked in this time window.',
+    );
+  }
+
+  // Validate capacity
+  if (
+    !availability.maxCapacity ||
+    availability.maxCapacity <= 0
+  ) {
+    throw new BadRequestException(
+      'Invalid availability capacity.',
+    );
+  }
+
+  // -----------------------------------------
+  // Count currently BOOKED patients
+  // -----------------------------------------
+
+  const bookedCount =
+    await this.appointmentRepository.count({
+      where: {
+        customAvailability: {
+          id: availability.id,
+        },
+        appointmentDate:
+          dto.appointmentDate,
+        status: 'BOOKED',
+      },
+    });
+
+  if (
+    bookedCount >=
+    availability.maxCapacity
+  ) {
+    throw new BadRequestException(
+      'Token capacity is full.',
+    );
+  }
+
+  // -----------------------------------------
+  // Find last token
+  // -----------------------------------------
+
+  const lastAppointment =
+    await this.appointmentRepository.findOne({
+      where: {
+        customAvailability: {
+          id: availability.id,
+        },
+        appointmentDate:
+          dto.appointmentDate,
+      },
+      order: {
+        tokenNumber: 'DESC',
+      },
+    });
+
+  const nextToken =
+    (lastAppointment?.tokenNumber ?? 0) + 1;
+
+  // -----------------------------------------
+  // Release OLD appointment
+  // -----------------------------------------
+
+  await this.releaseOldBooking(
+    appointment,
+  );
+
+  // -----------------------------------------
+  // Increase NEW availability count
+  // -----------------------------------------
+
+  availability.bookedPatients += 1;
+
+  await this.customRepository.save(
+    availability,
+  );
+
+  // -----------------------------------------
+  // Update appointment
+  // -----------------------------------------
+
+  appointment.customAvailability =
+    availability;
+
+  appointment.appointmentDate =
+    dto.appointmentDate;
+
+  appointment.schedulingType =
+    'STREAM';
+
+  appointment.tokenNumber =
+    nextToken;
+
+  appointment.status =
+    'BOOKED';
+
+  const updated =
+    await this.appointmentRepository.save(
+      appointment,
+    );
+
+  return {
+    message:
+      'Appointment rescheduled successfully.',
+
+    data: {
+      appointmentDate:
+        updated.appointmentDate,
+
+      timeWindow:
+        `${availability.startTime} - ${availability.endTime}`,
+
+      schedulingType:
+        updated.schedulingType,
+
+      tokenNumber:
+        updated.tokenNumber,
+
+      status:
+        updated.status,
+    },
+  };
+}
+
+// STREAM = TOKEN BASED
+// RECURRING AVAILABILITY
+
+if (dto.recurringAvailabilityId) {
+  const availability =
+    await this.recurringRepository.findOne({
+      where: {
+        id: dto.recurringAvailabilityId,
+      },
+      relations: {
+        doctor: true,
+      },
+    });
+
+  if (!availability) {
+    throw new NotFoundException(
+      'New availability not found.',
+    );
+  }
+
+  // Same doctor
+  if (
+    availability.doctor.id !==
+    appointment.doctor.id
+  ) {
+    throw new BadRequestException(
+      'New availability does not belong to this doctor.',
+    );
+  }
+
+  // STREAM = token based
+  if (
+    availability.schedulingType !== 'STREAM'
+  ) {
+    throw new BadRequestException(
+      'Selected availability is not token-based scheduling.',
+    );
+  }
+
+  // Validate recurring day
+  this.validateRecurringDay(
+    dto.appointmentDate,
+    availability.dayOfWeek,
+  );
+
+  // Prevent rescheduling to the same recurring availability on the same date
+if (
+  appointment.recurringAvailability?.id === availability.id &&
+  appointment.appointmentDate === dto.appointmentDate
+) {
+  throw new BadRequestException(
+    'You are already booked in this time window.',
+  );
+}
+  // Capacity validation
+  if (
+    !availability.maxCapacity ||
+    availability.maxCapacity <= 0
+  ) {
+    throw new BadRequestException(
+      'Invalid availability capacity.',
+    );
+  }
+
+  const bookedCount =
+    await this.appointmentRepository.count({
+      where: {
+        recurringAvailability: {
+          id: availability.id,
+        },
+        appointmentDate:
+          dto.appointmentDate,
+        status: 'BOOKED',
+      },
+    });
+
+  if (
+    bookedCount >=
+    availability.maxCapacity
+  ) {
+    throw new BadRequestException(
+      'Token capacity is full for this date.',
+    );
+  }
+
+
+  const lastAppointment =
+    await this.appointmentRepository.findOne({
+      where: {
+        recurringAvailability: {
+          id: availability.id,
+        },
+        appointmentDate:
+          dto.appointmentDate,
+      },
+      order: {
+        tokenNumber: 'DESC',
+      },
+    });
+
+  const nextToken =
+    (lastAppointment?.tokenNumber ?? 0) + 1;
+
+
+  await this.releaseOldBooking(
+    appointment,
+  );
+
+  // Update appointment
+  appointment.recurringAvailability =
+    availability;
+
+  appointment.appointmentDate =
+    dto.appointmentDate;
+
+  appointment.schedulingType =
+    'STREAM';
+
+  appointment.tokenNumber =
+    nextToken;
+
+  appointment.status =
+    'BOOKED';
+
+  const updated =
+    await this.appointmentRepository.save(
+      appointment,
+    );
+
+  return {
+    message:
+      'Appointment rescheduled successfully.',
+
+    data: {
+      appointmentDate:
+        updated.appointmentDate,
+
+      timeWindow:
+        `${availability.startTime} - ${availability.endTime}`,
+
+      schedulingType:
+        updated.schedulingType,
+
+      tokenNumber:
+        updated.tokenNumber,
+
+      status:
+        updated.status,
+    },
+  };
+}
+
+  throw new BadRequestException(
+    'Invalid rescheduling request.',
+  );
 }
 
 //Cancel the appointment
@@ -838,7 +1529,6 @@ async getDoctorAppointments(user: any) {
         appointmentId: appointment.id,
 
         patient: {
-          id: appointment.patient.id,
           fullName: appointment.patient.fullName,
           email: appointment.patient.email,
           mobileNumber:
