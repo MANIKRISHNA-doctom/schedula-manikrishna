@@ -42,7 +42,7 @@ export class CreateRecurringAvailabilityDto {
   @Min(0)
   bufferTime?: number;
 
-  // STREAM
+  // STREAM and WAVE
   @IsOptional()
   @IsInt()
   @Min(1)

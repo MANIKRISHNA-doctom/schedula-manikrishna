@@ -50,12 +50,6 @@ private readonly appointmentRepository: Repository<Appointment>,
           'Duration is required for WAVE scheduling.',
         );
       }
-
-      if (dto.maxCapacity) {
-        throw new BadRequestException(
-          'maxCapacity is not allowed for WAVE scheduling.',
-        );
-      }
     }
 
     if (dto.schedulingType === 'STREAM') {

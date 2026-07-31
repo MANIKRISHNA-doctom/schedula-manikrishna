@@ -188,6 +188,9 @@ export class PatientService {
             },
           });
 
+          const bookedCount = availability.bookedPatients ?? 0;
+          const maxCapacity = availability.maxCapacity ?? 0;
+
           result.push({
             type: 'WAVE',
 
@@ -195,11 +198,24 @@ export class PatientService {
 
             availabilityId: availability.id,
 
-            slots: slots.map((slot) => ({
-              slotId: slot.id,
-              startTime: slot.startTime,
-              endTime: slot.endTime,
-            })),
+            capacity: maxCapacity,
+
+            booked: bookedCount,
+
+            available: Math.max(maxCapacity - bookedCount, 0),
+
+            isFull: bookedCount >= maxCapacity,
+
+            slots:
+              bookedCount >= maxCapacity
+                ? []
+                : slots
+                    .slice(0, Math.max(maxCapacity - bookedCount, 0))
+                    .map((slot) => ({
+                      slotId: slot.id,
+                      startTime: slot.startTime,
+                      endTime: slot.endTime,
+                    })),
           });
         }
       }
@@ -266,6 +282,35 @@ export class PatientService {
 
       // WAVE = EXACT TIME SLOTS
       else if (availability.schedulingType === 'WAVE') {
+        // Count booked appointments for this availability on selected date
+        const bookedCount = await this.appointmentRepository.count({
+          where: {
+            recurringAvailability: {
+              id: availability.id,
+            },
+            appointmentDate: date,
+            status: 'BOOKED',
+          },
+        });
+
+        const maxCapacity = availability.maxCapacity ?? 0;
+
+        // If capacity reached, return no slots
+        if (bookedCount >= maxCapacity) {
+          result.push({
+            type: 'WAVE',
+            date,
+            availabilityId: availability.id,
+            capacity: maxCapacity,
+            booked: bookedCount,
+            available: 0,
+            isFull: true,
+            slots: [],
+          });
+
+          continue;
+        }
+
         const slots = await this.recurringSlotRepository.find({
           where: {
             availability: {
@@ -299,14 +344,18 @@ export class PatientService {
           }
         }
 
+        // Only expose slots equal to remaining capacity
+        const remainingCapacity = maxCapacity - bookedCount;
+
         result.push({
           type: 'WAVE',
-
           date,
-
           availabilityId: availability.id,
-
-          slots: availableSlots,
+          capacity: maxCapacity,
+          booked: bookedCount,
+          available: remainingCapacity,
+          isFull: false,
+          slots: availableSlots.slice(0, remainingCapacity),
         });
       }
     }
@@ -317,8 +366,6 @@ export class PatientService {
     };
   }
 
-  //Book appointment
-  
   //CreatePatientProfile
   async createProfile(user: any, dto: CreatePatientProfileDto) {
     const loggedInUser = await this.userRepository.findOne({
