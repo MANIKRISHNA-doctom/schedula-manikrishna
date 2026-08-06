@@ -22,12 +22,16 @@ export class Appointment {
   id: string;
 
   // Patient who booked
-  @ManyToOne(() => User)
+  @ManyToOne(() => User,{
+    onDelete : 'CASCADE',
+  })
   @JoinColumn({ name: 'patientId' })
   patient: User;
 
   // Doctor
-  @ManyToOne(() => User)
+  @ManyToOne(() => User,{
+    onDelete : 'CASCADE'
+  })
   @JoinColumn({ name: 'doctorId' })
   doctor: User;
   
