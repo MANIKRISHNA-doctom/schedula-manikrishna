@@ -840,9 +840,9 @@ export class AppointmentService {
       await this.customSlotRepository.save(newSlot);
 
       appointment.customSlot = newSlot;
-      appointment.recurringSlot = undefined;
+      appointment.recurringSlot = null;
       appointment.customAvailability = newSlot.availability;
-      appointment.recurringAvailability = undefined;
+      appointment.recurringAvailability = null;
 
       appointment.appointmentDate = dto.appointmentDate;
 
@@ -942,9 +942,9 @@ export class AppointmentService {
       // Release old booking
       await this.releaseOldBooking(appointment);
 
-      appointment.customSlot = undefined;
+      appointment.customSlot = null;
       appointment.recurringSlot = newSlot;
-      appointment.customAvailability = undefined;
+      appointment.customAvailability = null;
       appointment.recurringAvailability = availability;
 
       appointment.appointmentDate = dto.appointmentDate;

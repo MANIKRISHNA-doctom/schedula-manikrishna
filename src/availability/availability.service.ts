@@ -22,6 +22,7 @@ import { UpdateRecurringAvailabilityDto } from './dto/update-recurring-availabil
 import { CreateCustomAvailabilityDto } from './dto/create-custom-availability.dto';
 import { UpdateCustomAvailabilityDto } from './dto/update-custom-availability.dto';
 import { ExpandShrinkAvailabilityDto } from './dto/expand-shrink-availability.dto';
+import { start } from 'repl';
 
 @Injectable()
 export class AvailabilityService {
@@ -50,19 +51,163 @@ export class AvailabilityService {
     doctorId: string,
     appointmentDate: string,
     reserved: Set<string>,
-    maxDays: number,
+    daysToSearch: number,
+    Priority: "CUSTOM" | "RECURRING",
+    excludedAvailabilityId?: string,
+    excludedSlotIds: Set<string> = new Set(),
   ) {
-    const start = new Date(appointmentDate);
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const start = new Date(appointmentDate);
     if (start < today) {
-      throw new BadRequestException('Cannot move past appointments.');
+      throw new BadRequestException('Cannot reschedule a past appointment.');
     }
 
-    const end = new Date(start);
-    end.setDate(end.getDate() + maxDays);
+    const searchEnd = new Date(start);
+    searchEnd.setDate(searchEnd.getDate() + daysToSearch);
+
+    // Do not go beyond booking window
+    const bookingEnd = new Date(today);
+    bookingEnd.setDate(bookingEnd.getDate() + 30);
+
+    const end = searchEnd < bookingEnd ? searchEnd : bookingEnd;
+
+    if(Priority == 'CUSTOM'){
+        
+      const customAvailabilities = await this.customRepository.find({
+        where: {
+          doctor: {
+            id: doctorId,
+          },
+          date: appointmentDate,
+          schedulingType: 'WAVE',
+        },
+        order: {
+          startTime: 'ASC',
+        },
+      });
+
+      for (const availability of customAvailabilities) {
+        if (
+          excludedAvailabilityId &&
+          availability.id === excludedAvailabilityId
+        ) {
+          continue;
+        }
+        const customSlots = await this.customSlotRepository.find({
+          where: {
+            availability: {
+              id: availability.id,
+            },
+          },
+          order: {
+            startTime: 'ASC',
+          },
+        });
+
+        for (const slot of customSlots) {
+          const key = `${slot.id}-${appointmentDate}`;
+
+          if (reserved.has(key)) {
+            continue;
+          }
+
+          if (slot.isBooked) {
+            continue;
+          }
+
+          reserved.add(key);
+
+          return {
+            appointmentDate: appointmentDate,
+            availability,
+            slot,
+            type: 'CUSTOM',
+          };
+        }
+      }
+    } else{
+      const day = new Date(appointmentDate)
+        .toLocaleDateString('en-US', {
+          weekday: 'long',
+        })
+        .toUpperCase();
+
+      const recurringAvailabilities = await this.recurringRepository.find({
+        where: {
+          doctor: {
+            id: doctorId,
+          },
+          dayOfWeek: day,
+          schedulingType: 'WAVE',
+        },
+        order: {
+          startTime: 'ASC',
+        },
+      });
+
+      for (const availability of recurringAvailabilities) {
+        // Do not use the availability currently
+        // being shrunk.
+        if (
+          excludedAvailabilityId &&
+          availability.id === excludedAvailabilityId
+        ) {
+          continue;
+        }
+
+        const recurringSlots = await this.recurringSlotRepository.find({
+          where: {
+            availability: {
+              id: availability.id,
+            },
+          },
+          order: {
+            startTime: 'ASC',
+          },
+        });
+
+        for (const slot of recurringSlots) {
+          // Never select a slot that is about to
+          // be deleted.
+          if (excludedSlotIds.has(slot.id)) {
+            continue;
+          }
+
+          const key = `${slot.id}-${appointmentDate}`;
+
+          if (reserved.has(key)) {
+            continue;
+          }
+
+          const booked = await this.appointmentRepository.findOne({
+            where: {
+              recurringSlot: {
+                id: slot.id,
+              },
+              appointmentDate: appointmentDate,
+              status: 'BOOKED',
+            },
+          });
+
+          if (booked) {
+            continue;
+          }
+
+          reserved.add(key);
+
+          return {
+            appointmentDate,
+            availability,
+            slot,
+            type: 'RECURRING',
+          };
+        }
+    }
+    }
+
+    start.setDate(start.getDate() + 1);
 
     for (
       let date = new Date(start);
@@ -71,13 +216,11 @@ export class AvailabilityService {
     ) {
       const currentDate = date.toISOString().split('T')[0];
 
-      /*
-         ---------------------------
-         1. CUSTOM AVAILABILITY
-         ---------------------------
-        */
+      // ----------------------------------------------
+      // 1. CUSTOM AVAILABILITY FIRST
+      // ----------------------------------------------
 
-      const customs = await this.customRepository.find({
+      const customAvailabilities = await this.customRepository.find({
         where: {
           doctor: {
             id: doctorId,
@@ -85,13 +228,16 @@ export class AvailabilityService {
           date: currentDate,
           schedulingType: 'WAVE',
         },
+        order: {
+          startTime: 'ASC',
+        },
       });
 
-      for (const custom of customs) {
-        const slots = await this.customSlotRepository.find({
+      for (const availability of customAvailabilities) {
+        const customSlots = await this.customSlotRepository.find({
           where: {
             availability: {
-              id: custom.id,
+              id: availability.id,
             },
           },
           order: {
@@ -99,51 +245,65 @@ export class AvailabilityService {
           },
         });
 
-        for (const slot of slots) {
+        for (const slot of customSlots) {
           const key = `${slot.id}-${currentDate}`;
 
-          if (reserved.has(key)) continue;
+          if (reserved.has(key)) {
+            continue;
+          }
 
-          if (slot.isBooked) continue;
+          if (slot.isBooked) {
+            continue;
+          }
 
           reserved.add(key);
 
           return {
             appointmentDate: currentDate,
-            availability: custom,
+            availability,
             slot,
             type: 'CUSTOM',
           };
         }
       }
 
-      /*
-         -----------------------------
-         2. RECURRING AVAILABILITY
-         -----------------------------
-        */
+      // ----------------------------------------------
+      // 2. RECURRING AVAILABILITY
+      // ----------------------------------------------
 
-      const weekday = date
+      const day = date
         .toLocaleDateString('en-US', {
           weekday: 'long',
         })
         .toUpperCase();
 
-      const recurrings = await this.recurringRepository.find({
+      const recurringAvailabilities = await this.recurringRepository.find({
         where: {
           doctor: {
             id: doctorId,
           },
-          dayOfWeek: weekday,
+          dayOfWeek: day,
           schedulingType: 'WAVE',
+        },
+        order: {
+          startTime: 'ASC',
         },
       });
 
-      for (const recurring of recurrings) {
-        const slots = await this.recurringSlotRepository.find({
+      for (const availability of recurringAvailabilities) {
+        // Do not use the availability currently
+        // being shrunk.
+        if (
+          excludedAvailabilityId &&
+          availability.id === excludedAvailabilityId
+        ) {
+          continue;
+        }
+
+        const recurringSlots = await this.recurringSlotRepository.find({
           where: {
             availability: {
-              id: recurring.id,
+              id: availability.id,
             },
           },
           order: {
@@ -151,10 +311,18 @@ export class AvailabilityService {
           },
         });
 
-        for (const slot of slots) {
+        for (const slot of recurringSlots) {
+          // Never select a slot that is about to
+          // be deleted.
+          if (excludedSlotIds.has(slot.id)) {
+            continue;
+          }
+
           const key = `${slot.id}-${currentDate}`;
 
-          if (reserved.has(key)) continue;
+          if (reserved.has(key)) {
+            continue;
+          }
 
           const booked = await this.appointmentRepository.findOne({
             where: {
@@ -166,13 +334,15 @@ export class AvailabilityService {
             },
           });
 
-          if (booked) continue;
+          if (booked) {
+            continue;
+          }
 
           reserved.add(key);
 
           return {
             appointmentDate: currentDate,
-            availability: recurring,
+            availability,
             slot,
             type: 'RECURRING',
           };
@@ -182,7 +352,6 @@ export class AvailabilityService {
 
     return null;
   }
-
 
   private isOutsideRange(
     slotStart: string,
@@ -292,10 +461,10 @@ export class AvailabilityService {
   }
 
   private isOverlapping(
-    existingStart: string,
-    existingEnd: string,
-    newStart: string,
-    newEnd: string,
+    existingStart: number,
+    existingEnd: number,
+    newStart: number,
+    newEnd: number,
   ): boolean {
     return existingStart < newEnd && existingEnd > newStart;
   }
@@ -344,8 +513,8 @@ export class AvailabilityService {
         },
       },
       relations: {
-    doctor: true,
-  },
+        doctor: true,
+      },
     });
 
     if (!availability) {
@@ -362,6 +531,27 @@ export class AvailabilityService {
 
     this.validateTime(newStart, newEnd);
 
+    const newStartMinutes = this.timeToMinutes(newStart);
+    const newEndMinutes = this.timeToMinutes(newEnd);
+
+    const oldStartMinutes = this.timeToMinutes(availability.startTime);
+    const oldEndMinutes = this.timeToMinutes(availability.endTime);
+
+    // No changes
+    if (
+      newStartMinutes === oldStartMinutes &&
+      newEndMinutes === oldEndMinutes
+    ) {
+      throw new BadRequestException('No changes detected.');
+    }
+
+    // Expand only
+    if (newStartMinutes > oldStartMinutes || newEndMinutes < oldEndMinutes) {
+      throw new BadRequestException(
+        'Expand operation cannot reduce availability.',
+      );
+    }
+
     // Check overlap with other recurring availabilities
     const existingAvailabilities = await this.recurringRepository.find({
       where: {
@@ -377,26 +567,23 @@ export class AvailabilityService {
         continue;
       }
 
-      if (this.isOverlapping(slot.startTime, slot.endTime, newStart, newEnd)) {
+      const existingStartMinutes = this.timeToMinutes(slot.startTime);
+      const existingEndMinutes = this.timeToMinutes(slot.endTime);
+
+      const newStartMinutes = this.timeToMinutes(newStart);
+      const newEndMinutes = this.timeToMinutes(newEnd);
+      if (
+        this.isOverlapping(
+          existingStartMinutes,
+          existingEndMinutes,
+          newStartMinutes,
+          newEndMinutes,
+        )
+      ) {
         throw new BadRequestException(
           'Expanded availability overlaps with an existing availability.',
         );
       }
-    }
-
-    // Expand only
-    if (newStart > availability.startTime || newEnd < availability.endTime) {
-      throw new BadRequestException(
-        'Expand operation cannot reduce availability.',
-      );
-    }
-
-    // No changes
-    if (
-      newStart === availability.startTime &&
-      newEnd === availability.endTime
-    ) {
-      throw new BadRequestException('No changes detected.');
     }
 
     // STREAM
@@ -433,6 +620,21 @@ export class AvailabilityService {
       },
     });
 
+     if (existingSlots.length === 0) {
+  let current = newStartMinutes;
+
+  while (current + duration <= newEndMinutes) {
+    const slot = this.recurringSlotRepository.create({
+      availability,
+      startTime: this.minutesToTime(current),
+      endTime: this.minutesToTime(current + duration),
+    });
+
+    await this.recurringSlotRepository.save(slot);
+
+    current += duration + buffer;
+  }
+} else{
     // Expand earlier
     if (newStart < availability.startTime) {
       let current = this.timeToMinutes(newStart);
@@ -472,6 +674,7 @@ export class AvailabilityService {
         current += duration + buffer;
       }
     }
+}
 
     availability.startTime = newStart;
     availability.endTime = newEnd;
@@ -515,6 +718,9 @@ export class AvailabilityService {
           id: doctor.id,
         },
       },
+      relations: {
+        doctor: true,
+      },
     });
 
     if (!availability) {
@@ -529,6 +735,27 @@ export class AvailabilityService {
     const newEnd = dto.endTime ?? availability.endTime;
 
     this.validateTime(newStart, newEnd);
+
+    const newStartMinutes = this.timeToMinutes(newStart);
+    const newEndMinutes = this.timeToMinutes(newEnd);
+
+    const oldStartMinutes = this.timeToMinutes(availability.startTime);
+    const oldEndMinutes = this.timeToMinutes(availability.endTime);
+
+    // No changes
+    if (
+      newStartMinutes === oldStartMinutes &&
+      newEndMinutes === oldEndMinutes
+    ) {
+      throw new BadRequestException('No changes detected.');
+    }
+
+    // Expand only
+    if (newStartMinutes > oldStartMinutes || newEndMinutes < oldEndMinutes) {
+      throw new BadRequestException(
+        'Expand operation cannot reduce availability.',
+      );
+    }
 
     // Check overlap with other custom availabilities
     const existingAvailabilities = await this.customRepository.find({
@@ -546,17 +773,23 @@ export class AvailabilityService {
         continue;
       }
 
-      if (this.isOverlapping(slot.startTime, slot.endTime, newStart, newEnd)) {
+      const existingStartMinutes = this.timeToMinutes(slot.startTime);
+      const existingEndMinutes = this.timeToMinutes(slot.endTime);
+
+      const newStartMinutes = this.timeToMinutes(newStart);
+      const newEndMinutes = this.timeToMinutes(newEnd);
+      if (
+        this.isOverlapping(
+          existingStartMinutes,
+          existingEndMinutes,
+          newStartMinutes,
+          newEndMinutes,
+        )
+      ) {
         throw new BadRequestException(
           'Expanded availability overlaps with an existing availability.',
         );
       }
-    }
-    // Expand only
-    if (newStart > availability.startTime || newEnd < availability.endTime) {
-      throw new BadRequestException(
-        'Expand operation cannot reduce availability.',
-      );
     }
 
     // STREAM
@@ -593,7 +826,24 @@ export class AvailabilityService {
       },
     });
 
-    // Expand Earlier
+    // If existing slots is zero
+    if (existingSlots.length === 0) {
+  let current = newStartMinutes;
+
+  while (current + duration <= newEndMinutes) {
+    const slot = this.customSlotRepository.create({
+      availability,
+      startTime: this.minutesToTime(current),
+      endTime: this.minutesToTime(current + duration),
+      isBooked: false,
+    });
+
+    await this.customSlotRepository.save(slot);
+
+    current += duration + buffer;
+  }
+} else{
+       // Expand Earlier
     if (newStart < availability.startTime) {
       let current = this.timeToMinutes(newStart);
 
@@ -634,6 +884,7 @@ export class AvailabilityService {
         current += duration + buffer;
       }
     }
+}
 
     availability.startTime = newStart;
     availability.endTime = newEnd;
@@ -675,12 +926,15 @@ export class AvailabilityService {
     try {
       const doctor = await this.getDoctor(user);
 
-      const availability = await this.customRepository.findOne({
-        where: { id },
-        relations: {
-          doctor: true,
+      const availability = await queryRunner.manager.findOne(
+        this.customRepository.target,
+        {
+          where: { id },
+          relations: {
+            doctor: true,
+          },
         },
-      });
+      );
 
       if (!availability) {
         throw new NotFoundException('Availability not found.');
@@ -696,10 +950,18 @@ export class AvailabilityService {
 
       this.validateTime(newStart, newEnd);
 
+      const newStartMinutes = this.timeToMinutes(newStart);
+      const newEndMinutes = this.timeToMinutes(newEnd);
+
+      const oldStartMinutes = this.timeToMinutes(availability.startTime);
+      const oldEndMinutes = this.timeToMinutes(availability.endTime);
       if (
-        newStart <= availability.startTime &&
-        newEnd >= availability.endTime
+        newStartMinutes === oldStartMinutes &&
+        newEndMinutes === oldEndMinutes
       ) {
+        throw new BadRequestException('No changes detected');
+      }
+      if (newStartMinutes < oldStartMinutes || newEndMinutes > oldEndMinutes) {
         throw new BadRequestException('This is not a shrink operation.');
       }
 
@@ -720,55 +982,60 @@ export class AvailabilityService {
         };
       }
 
-      const slots = await this.customSlotRepository.find({
-    where:{
-        availability:{
-            id:availability.id
-        }
-    },
-    order:{
-        startTime:"ASC"
-    }
-});
+      const slots = await queryRunner.manager.find(
+        this.customSlotRepository.target,
+        {
+          where: {
+            availability: {
+              id: availability.id,
+            },
+          },
+          order: {
+            startTime: 'ASC',
+          },
+        },
+      );
 
       const affectedSlots: any[] = [];
       const availableSlots: any[] = [];
       const slotsToDelete: any[] = [];
       for (const slot of slots) {
-       const outside = this.isOutsideRange(slot.startTime, slot.endTime, newStart, newEnd)
-        if (
-          !slot.isBooked && !outside
-        ) {
+        const outside = this.isOutsideRange(
+          slot.startTime,
+          slot.endTime,
+          newStart,
+          newEnd,
+        );
+        if (!slot.isBooked && !outside) {
           availableSlots.push(slot);
           continue;
         }
 
-        if (
-          outside && slot.isBooked
-        ) {
+        if (outside && slot.isBooked) {
           affectedSlots.push(slot);
         }
 
-        if (
-          outside
-        ) {
+        if (outside) {
           slotsToDelete.push(slot);
         }
       }
       const reserved = new Set<string>();
 
       for (const slot of affectedSlots) {
-        const appointment = await this.appointmentRepository.findOne({
-          where: {
-            customSlot: {
-              id: slot.id,
+        const appointment = await queryRunner.manager.findOne(
+          this.appointmentRepository.target,
+          {
+            where: {
+              customSlot: {
+                id: slot.id,
+              },
+              status: 'BOOKED',
             },
-            status: 'BOOKED',
+            relations: {
+              customSlot: true,
+            },
           },
-          relations: {
-            customSlot: true,
-          },
-        });
+        );
 
         if (!appointment) {
           slot.isBooked = false;
@@ -776,7 +1043,7 @@ export class AvailabilityService {
           continue;
         }
 
-        let replacement ;
+        let replacement;
 
         if (availableSlots.length > 0) {
           const availableslot = availableSlots.shift()!;
@@ -792,7 +1059,10 @@ export class AvailabilityService {
             doctor.id,
             appointment.appointmentDate,
             reserved,
-            4,
+            5,
+            "CUSTOM",
+            availability.id,
+            new Set(slotsToDelete.map(slot => slot.id))
           );
         }
 
@@ -809,16 +1079,16 @@ export class AvailabilityService {
           appointment.customAvailability = replacement.availability;
           appointment.customSlot = replacement.slot;
 
-          appointment.recurringAvailability = undefined;
-          appointment.recurringSlot = undefined;
+          appointment.recurringAvailability = null;
+          appointment.recurringSlot = null;
 
           replacement.slot.isBooked = true;
 
           await queryRunner.manager.save(slot);
           await queryRunner.manager.save(replacement.slot);
         } else {
-          appointment.customAvailability = undefined;
-          appointment.customSlot = undefined;
+          appointment.customAvailability = null;
+          appointment.customSlot = null;
 
           appointment.recurringAvailability = replacement.availability;
           appointment.recurringSlot = replacement.slot;
@@ -835,6 +1105,29 @@ export class AvailabilityService {
       availability.endTime = newEnd;
       await queryRunner.manager.save(availability);
 
+      const slotsToDeleteIds = slotsToDelete.map(
+        (slot) => slot.id,
+      );
+
+      if (slotsToDeleteIds.length > 0) {
+        const remainingAppointments =
+          await queryRunner.manager
+            .getRepository(this.appointmentRepository.target)
+            .createQueryBuilder('appointment')
+            .where(
+              'appointment.customSlotId IN (:...slotIds)',
+              {
+                slotIds: slotsToDeleteIds,
+              },
+            )
+            .getMany();
+
+        if (remainingAppointments.length > 0) {
+          throw new BadRequestException(
+            'Cannot shrink availability because some appointments are still assigned to slots outside the new time range.',
+          );
+        }
+      }
       if (slotsToDelete.length) {
         await queryRunner.manager.remove(slotsToDelete);
       }
@@ -855,6 +1148,10 @@ export class AvailabilityService {
       return {
         message: 'Availability shrinked successfully.',
 
+        windowStartTime: newStart,
+
+        windowEndTime: newEnd,
+
         data: updatedSlots.map((slot) => ({
           startTime: slot.startTime,
           endTime: slot.endTime,
@@ -869,7 +1166,6 @@ export class AvailabilityService {
     }
   }
 
-
   async shrinkRecurring(
     user: any,
     id: string,
@@ -883,12 +1179,15 @@ export class AvailabilityService {
     try {
       const doctor = await this.getDoctor(user);
 
-      const availability = await this.recurringRepository.findOne({
-        where: { id },
-        relations: {
-          doctor: true,
+      const availability = await queryRunner.manager.findOne(
+        this.recurringRepository.target,
+        {
+          where: { id },
+          relations: {
+            doctor: true,
+          },
         },
-      });
+      );
 
       if (!availability) {
         throw new NotFoundException('Availability not found.');
@@ -903,19 +1202,35 @@ export class AvailabilityService {
 
       this.validateTime(newStart, newEnd);
 
+      const newStartMinutes = this.timeToMinutes(newStart);
+      const newEndMinutes = this.timeToMinutes(newEnd);
+
+      const oldStartMinutes = this.timeToMinutes(availability.startTime);
+      const oldEndMinutes = this.timeToMinutes(availability.endTime);
+
       if (
-        newStart <= availability.startTime &&
-        newEnd >= availability.endTime
+        newStartMinutes === oldStartMinutes &&
+        newEndMinutes === oldEndMinutes
       ) {
+        throw new BadRequestException('No changes detected.');
+      }
+
+      // It is a shrink only if:
+      // new start is same/later AND new end is same/earlier.
+      if (newStartMinutes < oldStartMinutes || newEndMinutes > oldEndMinutes) {
         throw new BadRequestException('This is not a shrink operation.');
       }
 
+      // --------------------------------------------------
       // STREAM
+      // --------------------------------------------------
+
       if (availability.schedulingType === 'STREAM') {
         availability.startTime = newStart;
         availability.endTime = newEnd;
 
         await queryRunner.manager.save(availability);
+
         await queryRunner.commitTransaction();
 
         return {
@@ -927,8 +1242,20 @@ export class AvailabilityService {
         };
       }
 
-      // Fetch all recurring slots
-      const slots = await this.recurringSlotRepository.find({
+      // --------------------------------------------------
+      // WAVE
+      // --------------------------------------------------
+
+      const recurringSlotRepository = queryRunner.manager.getRepository(
+        this.recurringSlotRepository.target,
+      );
+
+      const appointmentRepository = queryRunner.manager.getRepository(
+        this.appointmentRepository.target,
+      );
+
+      // Fetch slots belonging to this availability
+      const slots = await recurringSlotRepository.find({
         where: {
           availability: {
             id: availability.id,
@@ -939,189 +1266,237 @@ export class AvailabilityService {
         },
       });
 
+      // Slots that will remain after shrink
+      const availableSlots = slots.filter(
+        (slot) =>
+          !this.isOutsideRange(slot.startTime, slot.endTime, newStart, newEnd),
+      );
+
+      // Slots that must be removed
       const outsideSlots = slots.filter((slot) =>
         this.isOutsideRange(slot.startTime, slot.endTime, newStart, newEnd),
       );
-      const availableSlots = slots.filter((slot) =>
-        !this.isOutsideRange(slot.startTime, slot.endTime, newStart, newEnd),
-      );
 
+      // Nothing to remove
       if (outsideSlots.length === 0) {
-  availability.startTime = newStart;
-  availability.endTime = newEnd;
+        availability.startTime = newStart;
+        availability.endTime = newEnd;
 
-  await queryRunner.manager.save(availability);
-  await queryRunner.commitTransaction();
+        await queryRunner.manager.save(availability);
 
-  return {
-    message: 'Availability shrinked successfully.',
-    data : {
-      startTime : newStart,
-      endTime : newEnd
-    }
-  };
-}
-      // Next 30 days
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+        await queryRunner.commitTransaction();
 
-      const endDate = new Date(today);
-      endDate.setDate(endDate.getDate() + 30);
+        return {
+          message: 'Availability shrinked successfully.',
+          window_startTime: newStart,
+          window_endTime: newEnd,
+          data: slots.map((slot) => ({
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          })),
+        };
+      }
 
-      const slotIds = outsideSlots.map(slot => slot.id);
-      // Fetch recurring days  booked appointments in next 30 days(ex:1,8,15,22,29)
-      const bookedAppointments = await this.appointmentRepository
+      const outsideSlotIds = outsideSlots.map((slot) => slot.id);
+
+      // --------------------------------------------------
+      // FIND AFFECTED APPOINTMENTS
+      // --------------------------------------------------
+
+      const affectedAppointments = await appointmentRepository
         .createQueryBuilder('appointment')
         .leftJoinAndSelect('appointment.recurringSlot', 'recurringSlot')
-        .where('recurringSlot.id IN (:...slotIds)', {
-          slotIds,
+        .where('appointment.recurringSlotId IN (:...slotIds)', {
+          slotIds: outsideSlotIds,
         })
         .andWhere('appointment.status = :status', {
           status: 'BOOKED',
         })
-        .andWhere('appointment.appointmentDate BETWEEN :today AND :endDate', {
-          today: today.toISOString().split('T')[0],
-          endDate: endDate.toISOString().split('T')[0],
-        })
         .orderBy('appointment.appointmentDate', 'ASC')
         .getMany();
 
-      // Group appointments by date
-      const appointmentMap = new Map<string, any[]>();
-
-      const moves: any[] = [];
+      // --------------------------------------------------
+      // TEMPORARY RESERVATION SET
+      // --------------------------------------------------
 
       const reserved = new Set<string>();
 
-      for (const appointment of bookedAppointments) {
-        if (!appointmentMap.has(appointment.appointmentDate)) {
-          appointmentMap.set(appointment.appointmentDate, []);
+      const moves: any[] = [];
+
+      // --------------------------------------------------
+      // RESCHEDULE EACH APPOINTMENT
+      // --------------------------------------------------
+
+      for (const appointment of affectedAppointments) {
+        const appointmentDate = appointment.appointmentDate;
+
+        let replacement: any = null;
+
+        // ----------------------------------------------
+        // 1. FIRST CHECK SAME DATE / SAME AVAILABILITY
+        // ----------------------------------------------
+
+        for (const slot of availableSlots) {
+          const key = `${slot.id}-${appointmentDate}`;
+
+          if (reserved.has(key)) {
+            continue;
+          }
+
+          const booked = await appointmentRepository.findOne({
+            where: {
+              recurringSlot: {
+                id: slot.id,
+              },
+              appointmentDate,
+              status: 'BOOKED',
+            },
+          });
+
+          if (!booked) {
+            reserved.add(key);
+
+            replacement = {
+              appointmentDate,
+              availability,
+              slot,
+              type: 'RECURRING',
+            };
+
+            break;
+          }
         }
 
-        appointmentMap.get(appointment.appointmentDate)!.push(appointment);
+        // ----------------------------------------------
+        // 2. SEARCH OTHER AVAILABILITIES
+        // ----------------------------------------------
+
+        if (!replacement) {
+          replacement = await this.findNextAvailableSlot(
+            doctor.id,
+            appointmentDate,
+            reserved,
+            5,
+            "RECURRING",
+            availability.id,
+            new Set(outsideSlotIds),
+          );
+        }
+
+        // ----------------------------------------------
+        // 3. NO REPLACEMENT
+        // ----------------------------------------------
+
+        if (!replacement) {
+          throw new BadRequestException(
+            `No appointment available for ${appointmentDate} within the next 5 days.`,
+          );
+        }
+
+        moves.push({
+          appointment,
+          replacement,
+        });
       }
 
-      // Validate each date separately
-      for (const [date, appointments] of appointmentMap) {
-  const freeSlots: RecurringSlot[] = [];
-
-  for (const slot of availableSlots) {
-
-    const booked = await this.appointmentRepository.findOne({
-      where: {
-        recurringSlot: {
-          id: slot.id,
-        },
-        appointmentDate: date,
-        status: 'BOOKED',
-      },
-    });
-
-    if (!booked) {
-      freeSlots.push(slot);
-    }
-  }
-
-      for (const appointment of appointments) {
-
-  let nextAppointment;
-
-  if (freeSlots.length > 0) {
-    const slot = freeSlots.shift()!;
-    nextAppointment = {
-      appointmentDate: date,
-      availability: availability,
-      slot: slot,
-      type: 'RECURRING',
-    };
-    reserved.add(`${slot.id}-${date}`);
-
-  } else {
-
-    nextAppointment = await this.findNextAvailableSlot(
-      doctor.id,
-      appointment.appointmentDate,
-      reserved,
-      5,
-    );
-
-  }
-
-  if (!nextAppointment) {
-    throw new BadRequestException(
-      'No appointment available for next 5 days.',
-    );
-  }
-
-  moves.push({
-    appointment,
-    nextAppointment,
-  });
-
-}
-      }
+      // --------------------------------------------------
+      // APPLY MOVES
+      // --------------------------------------------------
 
       for (const move of moves) {
-        if (move.nextAppointment.type === 'CUSTOM') {
-          move.appointment.customAvailability =
-            move.nextAppointment.availability;
+        const appointment = move.appointment;
+        const replacement = move.replacement;
 
-          move.appointment.customSlot = move.nextAppointment.slot;
+        if (replacement.type === 'CUSTOM') {
+          appointment.customAvailability = replacement.availability;
 
-          move.appointment.recurringAvailability = null;
-          move.appointment.recurringSlot = null;
+          appointment.customSlot = replacement.slot;
+
+          appointment.recurringAvailability = null;
+          appointment.recurringSlot = null;
+
+          replacement.slot.isBooked = true;
+
+          await queryRunner.manager.save(replacement.slot);
+
         } else {
-          move.appointment.recurringAvailability =
-            move.nextAppointment.availability;
+          appointment.recurringAvailability = replacement.availability;
 
-          move.appointment.recurringSlot = move.nextAppointment.slot;
+          appointment.recurringSlot = replacement.slot;
 
-          move.appointment.customAvailability = null;
-          move.appointment.customSlot = null;
+          appointment.customAvailability = null;
+          appointment.customSlot = null;
         }
 
-        move.appointment.appointmentDate = move.nextAppointment.appointmentDate;
+        appointment.appointmentDate = replacement.appointmentDate;
 
-        await queryRunner.manager.save(move.appointment);
+        await appointmentRepository.save(appointment);
       }
 
-      // Delete slots outside new range
-      if (outsideSlots.length > 0) {
-        await queryRunner.manager.remove(outsideSlots);
+      // --------------------------------------------------
+      // CRITICAL SAFETY CHECK
+      // --------------------------------------------------
+      // Make absolutely sure no appointment still
+      // references a slot that we are about to delete.
+
+      const remainingAppointments = await appointmentRepository
+        .createQueryBuilder('appointment')
+        .where('appointment.recurringSlotId IN (:...slotIds)', {
+          slotIds: outsideSlotIds,
+        })
+        .getMany();
+
+      if (remainingAppointments.length > 0) {
+        throw new BadRequestException(
+          'Cannot shrink availability because some appointments are still assigned to slots outside the new time range.',
+        );
       }
+
+      // --------------------------------------------------
+      // DELETE OUTSIDE SLOTS
+      // --------------------------------------------------
+
+      await recurringSlotRepository.remove(outsideSlots);
+
+      // --------------------------------------------------
+      // UPDATE AVAILABILITY
+      // --------------------------------------------------
 
       availability.startTime = newStart;
       availability.endTime = newEnd;
 
       await queryRunner.manager.save(availability);
 
+      // --------------------------------------------------
+      // COMMIT
+      // --------------------------------------------------
+
       await queryRunner.commitTransaction();
 
-      const updatedSlots = await this.recurringSlotRepository.find({
-  where: {
-    availability: {
-      id: availability.id,
-    },
-  },
-  order: {
-    startTime: 'ASC',
-  },
-});
+      const updatedSlots = await recurringSlotRepository.find({
+        where: {
+          availability: {
+            id: availability.id,
+          },
+        },
+        order: {
+          startTime: 'ASC',
+        },
+      });
 
       return {
         message: 'Availability shrinked successfully.',
-
+        window_startTime: newStart,
+        window_endTime: newEnd,
         data: updatedSlots.map((slot) => ({
           startTime: slot.startTime,
           endTime: slot.endTime,
         })),
       };
     } catch (error) {
-       if (queryRunner.isTransactionActive) {
-    await queryRunner.rollbackTransaction();
-  }
-
-  throw error;
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
 
       throw error;
     } finally {
@@ -1154,12 +1529,17 @@ export class AvailabilityService {
     });
 
     for (const slot of existingSlots) {
+      const existingStartMinutes = this.timeToMinutes(slot.startTime);
+      const existingEndMinutes = this.timeToMinutes(slot.endTime);
+
+      const newStartMinutes = this.timeToMinutes(dto.startTime);
+      const newEndMinutes = this.timeToMinutes(dto.endTime);
       if (
         this.isOverlapping(
-          slot.startTime,
-          slot.endTime,
-          dto.startTime,
-          dto.endTime,
+          existingStartMinutes,
+          existingEndMinutes,
+          newStartMinutes,
+          newEndMinutes,
         )
       ) {
         throw new BadRequestException(
@@ -1276,16 +1656,21 @@ export class AvailabilityService {
         continue;
       }
 
+      const existingStartMinutes = this.timeToMinutes(slot.startTime);
+      const existingEndMinutes = this.timeToMinutes(slot.endTime);
+
+      const newStartMinutes = this.timeToMinutes(availability.startTime);
+      const newEndMinutes = this.timeToMinutes(availability.endTime);
       if (
         this.isOverlapping(
-          slot.startTime,
-          slot.endTime,
-          availability.startTime,
-          availability.endTime,
+          existingStartMinutes,
+          existingEndMinutes,
+          newStartMinutes,
+          newEndMinutes,
         )
       ) {
         throw new BadRequestException(
-          'Availability overlaps with another slot.',
+          'Availability overlaps with an existing availabilities.',
         );
       }
     }
@@ -1431,16 +1816,21 @@ export class AvailabilityService {
     });
 
     for (const slot of existing) {
+      const existingStartMinutes = this.timeToMinutes(slot.startTime);
+      const existingEndMinutes = this.timeToMinutes(slot.endTime);
+
+      const newStartMinutes = this.timeToMinutes(dto.startTime);
+      const newEndMinutes = this.timeToMinutes(dto.endTime);
       if (
         this.isOverlapping(
-          slot.startTime,
-          slot.endTime,
-          dto.startTime,
-          dto.endTime,
+          existingStartMinutes,
+          existingEndMinutes,
+          newStartMinutes,
+          newEndMinutes,
         )
       ) {
         throw new BadRequestException(
-          'Availability overlaps with existing slot.',
+          'Availability overlaps with an existing slot.',
         );
       }
     }
@@ -1587,16 +1977,21 @@ export class AvailabilityService {
         continue;
       }
 
+      const existingStartMinutes = this.timeToMinutes(slot.startTime);
+      const existingEndMinutes = this.timeToMinutes(slot.endTime);
+
+      const newStartMinutes = this.timeToMinutes(availability.startTime);
+      const newEndMinutes = this.timeToMinutes(availability.endTime);
       if (
         this.isOverlapping(
-          slot.startTime,
-          slot.endTime,
-          availability.startTime,
-          availability.endTime,
+          existingStartMinutes,
+          existingEndMinutes,
+          newStartMinutes,
+          newEndMinutes,
         )
       ) {
         throw new BadRequestException(
-          'Availability overlaps with another slot.',
+          'Availability overlaps with an existing slot.',
         );
       }
     }
