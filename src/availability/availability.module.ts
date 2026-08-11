@@ -10,9 +10,11 @@ import { RecurringSlot } from './recurring-slot.entity';
 import { User } from 'src/auth/user.entity';
 import { CustomSlot } from './custom-slot.entity';
 import { Appointment } from 'src/appointment/appointment.entity';
+import { MailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
+    MailModule,
     TypeOrmModule.forFeature([
       User,
       RecurringAvailability,

@@ -67,6 +67,7 @@ async rescheduleAppointment(
   );
 }
 
+
 @Get('doctor')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('DOCTOR')

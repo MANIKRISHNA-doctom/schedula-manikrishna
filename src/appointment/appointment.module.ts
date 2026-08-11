@@ -8,16 +8,20 @@ import { CustomSlot } from 'src/availability/custom-slot.entity';
 import { RecurringAvailability } from 'src/availability/recurring-availability.entity';
 import { RecurringSlot } from 'src/availability/recurring-slot.entity';
 import { CustomAvailability } from 'src/availability/custom-availability.entity';
+import { Notification } from 'src/notifications/notifications.entity';
+import { MailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
+      MailModule,
       TypeOrmModule.forFeature([
         Appointment,
         User,
         CustomSlot,
         CustomAvailability,
         RecurringAvailability,
-        RecurringSlot
+        RecurringSlot,
+        Notification
       ]),
     ],
   controllers: [AppointmentController],

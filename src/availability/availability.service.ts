@@ -3,12 +3,13 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger
 } from '@nestjs/common';
 
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository ,} from '@nestjs/typeorm';
 
-import { DataSource, Repository } from 'typeorm';
-
+import { DataSource, Repository,EntityManager } from 'typeorm';
+import { MailService } from 'src/email/email.service';
 import { User } from 'src/auth/user.entity';
 
 import { CustomSlot } from './custom-slot.entity';
@@ -16,18 +17,19 @@ import { RecurringSlot } from './recurring-slot.entity';
 import { Appointment } from 'src/appointment/appointment.entity';
 import { RecurringAvailability } from './recurring-availability.entity';
 import { CustomAvailability } from './custom-availability.entity';
+import { Notification } from 'src/notifications/notifications.entity';
 
 import { CreateRecurringAvailabilityDto } from './dto/create-recurring-availability.dto';
 import { UpdateRecurringAvailabilityDto } from './dto/update-recurring-availability.dto';
 import { CreateCustomAvailabilityDto } from './dto/create-custom-availability.dto';
 import { UpdateCustomAvailabilityDto } from './dto/update-custom-availability.dto';
 import { ExpandShrinkAvailabilityDto } from './dto/expand-shrink-availability.dto';
-import { start } from 'repl';
 
 @Injectable()
 export class AvailabilityService {
   constructor(
     private readonly dataSource: DataSource,
+    private readonly mailService: MailService,
     @InjectRepository(Appointment)
     private readonly appointmentRepository: Repository<Appointment>,
 
@@ -47,6 +49,49 @@ export class AvailabilityService {
     private recurringSlotRepository: Repository<RecurringSlot>,
   ) {}
 
+  private readonly logger = new Logger(MailService.name);
+    //Create Notification
+    private async createNotification(
+    manager: EntityManager,
+    patientId: string,
+    type:
+      | 'APPOINTMENT_BOOKED'
+      | 'APPOINTMENT_CANCELLED'
+      | 'APPOINTMENT_RESCHEDULED',
+    title: string,
+    message: string,
+    appointmentId: string,
+  ) {
+    const notificationRepository = manager.getRepository(Notification);
+  
+    // Prevent duplicate notification for the same appointment event
+    const existingNotification = await notificationRepository.findOne({
+      where: {
+        patient: {
+          id: patientId,
+        },
+        type,
+        appointment: {
+          id: appointmentId,
+        },
+      },
+    });
+  
+    if (existingNotification) {
+      return existingNotification;
+    }
+  
+    const notification = notificationRepository.create({
+      patient: { id: patientId },
+      type,
+      title,
+      message,
+      appointment: { id: appointmentId },
+    });
+  
+    return await notificationRepository.save(notification);
+  }
+  
   private async findNextAvailableSlot(
     doctorId: string,
     appointmentDate: string,
@@ -999,6 +1044,7 @@ export class AvailabilityService {
       const affectedSlots: any[] = [];
       const availableSlots: any[] = [];
       const slotsToDelete: any[] = [];
+      const notifications: any[] = [];
       for (const slot of slots) {
         const outside = this.isOutsideRange(
           slot.startTime,
@@ -1033,6 +1079,8 @@ export class AvailabilityService {
             },
             relations: {
               customSlot: true,
+              patient : true,
+              doctor : true
             },
           },
         );
@@ -1099,40 +1147,112 @@ export class AvailabilityService {
         appointment.appointmentDate = replacement.appointmentDate;
 
         await queryRunner.manager.save(appointment);
+
+        const appointmentStartTime =
+          appointment.customSlot?.startTime ||
+          appointment.recurringSlot?.startTime ||
+          appointment.recurringAvailability?.startTime ||
+          appointment.customAvailability?.startTime;
+
+        if (!appointmentStartTime) {
+          throw new Error('Appointment start time could not be determined');
+       }
+
+        const appointmentEndTime = 
+        appointment.customSlot?.endTime ||
+        appointment.recurringSlot?.endTime ||
+        appointment.recurringAvailability?.endTime ||
+        appointment.customAvailability?.endTime;
+
+       if (!appointmentEndTime) {
+          throw new Error('Appointment end time could not be determined');
+       }
+
+        //Notification message
+        const notificationMessage =
+        `Your appointment has been rescheduled to ` +
+        `${appointment.appointmentDate} from ` +
+        `${appointmentStartTime} to ${appointmentEndTime}.`;
+
+        await this.createNotification(
+          queryRunner.manager,
+          appointment.patient.id,
+          "APPOINTMENT_RESCHEDULED",
+          'Appointment rescheduled',
+          notificationMessage,
+          appointment.id
+        );
+
+        notifications.push({
+          patientEmail : appointment.patient.email,
+          patientFullName : appointment.patient.fullName,
+          doctorFullName : appointment.doctor.fullName,
+          appointmentDate : appointment.appointmentDate,
+          appointmentStartTime
+        })
       }
 
       availability.startTime = newStart;
       availability.endTime = newEnd;
       await queryRunner.manager.save(availability);
 
-      const slotsToDeleteIds = slotsToDelete.map(
-        (slot) => slot.id,
+      const appointmentRepository =
+  queryRunner.manager.getRepository(Appointment);
+
+for (const slot of slotsToDelete) {
+
+  const appointmentsUsingSlot =
+    await appointmentRepository.find({
+      where: {
+        recurringSlot: {
+          id: slot.id,
+        },
+      },
+      relations: {
+        recurringSlot: true,
+        recurringAvailability: true,
+      },
+    });
+
+  for (const appointment of appointmentsUsingSlot) {
+
+    if (appointment.status === 'BOOKED') {
+      throw new BadRequestException(
+        `Cannot delete slot ${slot.id}; booked appointment ${appointment.id} is still assigned.`,
       );
+    }
 
-      if (slotsToDeleteIds.length > 0) {
-        const remainingAppointments =
-          await queryRunner.manager
-            .getRepository(this.appointmentRepository.target)
-            .createQueryBuilder('appointment')
-            .where(
-              'appointment.customSlotId IN (:...slotIds)',
-              {
-                slotIds: slotsToDeleteIds,
-              },
-            )
-            .getMany();
+    // CANCELLED / COMPLETED
+    appointment.recurringSlot = null;
+    appointment.recurringAvailability = null;
 
-        if (remainingAppointments.length > 0) {
-          throw new BadRequestException(
-            'Cannot shrink availability because some appointments are still assigned to slots outside the new time range.',
-          );
-        }
-      }
-      if (slotsToDelete.length) {
-        await queryRunner.manager.remove(slotsToDelete);
-      }
+    await appointmentRepository.save(appointment);
+  }
+}
+
+if (slotsToDelete.length) {
+  await queryRunner.manager.remove(slotsToDelete);
+}
 
       await queryRunner.commitTransaction();
+
+      for (const notification of notifications) {
+      try {
+        await this.mailService
+          .sendAppointmentRescheduledMail(
+            notification.patientEmail,
+            notification.patientFullName,
+            notification.doctorFullName,
+            notification.appointmentDate,
+            notification.appointmentStartTime,
+          );
+      } catch (error) {
+        this.logger.error(
+          `Failed to send rescheduled appointment email to ${notification.patientEmail}`,
+          error,
+        );
+      }
+    }
 
       const updatedSlots = await this.customSlotRepository.find({
         where: {
@@ -1215,15 +1335,11 @@ export class AvailabilityService {
         throw new BadRequestException('No changes detected.');
       }
 
-      // It is a shrink only if:
-      // new start is same/later AND new end is same/earlier.
       if (newStartMinutes < oldStartMinutes || newEndMinutes > oldEndMinutes) {
         throw new BadRequestException('This is not a shrink operation.');
       }
 
-      // --------------------------------------------------
       // STREAM
-      // --------------------------------------------------
 
       if (availability.schedulingType === 'STREAM') {
         availability.startTime = newStart;
@@ -1242,9 +1358,7 @@ export class AvailabilityService {
         };
       }
 
-      // --------------------------------------------------
       // WAVE
-      // --------------------------------------------------
 
       const recurringSlotRepository = queryRunner.manager.getRepository(
         this.recurringSlotRepository.target,
@@ -1299,42 +1413,37 @@ export class AvailabilityService {
 
       const outsideSlotIds = outsideSlots.map((slot) => slot.id);
 
-      // --------------------------------------------------
       // FIND AFFECTED APPOINTMENTS
-      // --------------------------------------------------
 
       const affectedAppointments = await appointmentRepository
-        .createQueryBuilder('appointment')
-        .leftJoinAndSelect('appointment.recurringSlot', 'recurringSlot')
-        .where('appointment.recurringSlotId IN (:...slotIds)', {
-          slotIds: outsideSlotIds,
-        })
-        .andWhere('appointment.status = :status', {
-          status: 'BOOKED',
-        })
-        .orderBy('appointment.appointmentDate', 'ASC')
-        .getMany();
+  .createQueryBuilder('appointment')
+  .leftJoinAndSelect('appointment.recurringSlot', 'recurringSlot')
+  .leftJoinAndSelect('appointment.patient', 'patient')
+  .leftJoinAndSelect('appointment.doctor', 'doctor')
+  .where('appointment.recurringSlotId IN (:...slotIds)', {
+    slotIds: outsideSlotIds,
+  })
+  .andWhere('appointment.status = :status', {
+    status: 'BOOKED',
+  })
+  .orderBy('appointment.appointmentDate', 'ASC')
+  .getMany();
 
-      // --------------------------------------------------
       // TEMPORARY RESERVATION SET
-      // --------------------------------------------------
 
       const reserved = new Set<string>();
 
       const moves: any[] = [];
-
-      // --------------------------------------------------
+      
+      const notifications: any[] = [];
       // RESCHEDULE EACH APPOINTMENT
-      // --------------------------------------------------
 
       for (const appointment of affectedAppointments) {
         const appointmentDate = appointment.appointmentDate;
 
         let replacement: any = null;
 
-        // ----------------------------------------------
         // 1. FIRST CHECK SAME DATE / SAME AVAILABILITY
-        // ----------------------------------------------
 
         for (const slot of availableSlots) {
           const key = `${slot.id}-${appointmentDate}`;
@@ -1431,48 +1540,114 @@ export class AvailabilityService {
         appointment.appointmentDate = replacement.appointmentDate;
 
         await appointmentRepository.save(appointment);
-      }
 
-      // --------------------------------------------------
-      // CRITICAL SAFETY CHECK
-      // --------------------------------------------------
-      // Make absolutely sure no appointment still
-      // references a slot that we are about to delete.
+        const appointmentStartTime =
+          appointment.customSlot?.startTime ||
+          appointment.recurringSlot?.startTime ||
+          appointment.recurringAvailability?.startTime ||
+          appointment.customAvailability?.startTime;
 
-      const remainingAppointments = await appointmentRepository
-        .createQueryBuilder('appointment')
-        .where('appointment.recurringSlotId IN (:...slotIds)', {
-          slotIds: outsideSlotIds,
-        })
-        .getMany();
+        if (!appointmentStartTime) {
+          throw new Error('Appointment start time could not be determined');
+       }
 
-      if (remainingAppointments.length > 0) {
-        throw new BadRequestException(
-          'Cannot shrink availability because some appointments are still assigned to slots outside the new time range.',
+        const appointmentEndTime = 
+        appointment.customSlot?.endTime ||
+        appointment.recurringSlot?.endTime ||
+        appointment.recurringAvailability?.endTime ||
+        appointment.customAvailability?.endTime;
+
+       if (!appointmentEndTime) {
+          throw new Error('Appointment end time could not be determined');
+       }
+
+        //Notification message
+        const notificationMessage =
+        `Your appointment has been rescheduled to ` +
+        `${appointment.appointmentDate} from ` +
+        `${appointmentStartTime} to ${appointmentEndTime}.`;
+
+        await this.createNotification(
+          queryRunner.manager,
+          appointment.patient.id,
+          "APPOINTMENT_RESCHEDULED",
+          'Appointment rescheduled',
+          notificationMessage,
+          appointment.id
         );
+
+        notifications.push({
+          patientEmail : appointment.patient.email,
+          patientFullName : appointment.patient.fullName,
+          doctorFullName : appointment.doctor.fullName,
+          appointmentDate : appointment.appointmentDate,
+          appointmentStartTime
+        })
       }
 
-      // --------------------------------------------------
-      // DELETE OUTSIDE SLOTS
-      // --------------------------------------------------
+      // CRITICAL SAFETY CHECK AND DELETE APPOINTMENTS HAVING STATUS AS BOOKED OR COMPLETED
 
-      await recurringSlotRepository.remove(outsideSlots);
+      const appointmentRepo =
+  queryRunner.manager.getRepository(Appointment);
 
-      // --------------------------------------------------
+for (const slot of outsideSlots) {
+  const appointmentsUsingSlot =
+    await appointmentRepo.find({
+      where: {
+        recurringSlot: {
+          id: slot.id,
+        },
+      },
+    });
+
+  for (const appointment of appointmentsUsingSlot) {
+    if (appointment.status === 'BOOKED') {
+      throw new BadRequestException(
+        `Cannot delete slot ${slot.id}; booked appointment ${appointment.id} is still assigned.`,
+      );
+    }
+
+    // CANCELLED / COMPLETED
+    appointment.recurringSlot = null;
+    appointment.recurringAvailability = null;
+
+    await appointmentRepo.save(appointment);
+  }
+}
+
+// DELETE OUTSIDE SLOTS
+if (outsideSlots.length > 0) {
+  await recurringSlotRepository.remove(outsideSlots);
+}
+
       // UPDATE AVAILABILITY
-      // --------------------------------------------------
 
       availability.startTime = newStart;
       availability.endTime = newEnd;
 
       await queryRunner.manager.save(availability);
 
-      // --------------------------------------------------
       // COMMIT
-      // --------------------------------------------------
 
       await queryRunner.commitTransaction();
 
+      for (const notification of notifications) {
+      try {
+        await this.mailService
+          .sendAppointmentRescheduledMail(
+            notification.patientEmail,
+            notification.patientFullName,
+            notification.doctorFullName,
+            notification.appointmentDate,
+            notification.appointmentStartTime,
+          );
+      } catch (error) {
+        this.logger.error(
+          `Failed to send rescheduled appointment email to ${notification.patientEmail}`,
+          error,
+        );
+      }
+    }
       const updatedSlots = await recurringSlotRepository.find({
         where: {
           availability: {
