@@ -15,7 +15,9 @@ export class RecurringAvailability {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User,{
+    onDelete : 'CASCADE',
+  })
   @JoinColumn({ name: 'doctorId' })
   doctor: User;
 

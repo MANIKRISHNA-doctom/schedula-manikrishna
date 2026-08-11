@@ -13,7 +13,7 @@ export class CustomSlot {
 
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
+  
   @ManyToOne(() => CustomAvailability, {
     onDelete: 'CASCADE',
   })

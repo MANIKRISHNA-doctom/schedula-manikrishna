@@ -16,7 +16,9 @@ export class DoctorProfile {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @OneToOne(() => User)
+  @OneToOne(() => User,{
+    onDelete : 'CASCADE',
+  })
   @JoinColumn({ name: 'userId' })
   user: User;
 

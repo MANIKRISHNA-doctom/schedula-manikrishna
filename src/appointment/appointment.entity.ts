@@ -22,12 +22,16 @@ export class Appointment {
   id: string;
 
   // Patient who booked
-  @ManyToOne(() => User)
+  @ManyToOne(() => User,{
+    onDelete : 'CASCADE',
+  })
   @JoinColumn({ name: 'patientId' })
   patient: User;
 
   // Doctor
-  @ManyToOne(() => User)
+  @ManyToOne(() => User,{
+    onDelete : 'CASCADE'
+  })
   @JoinColumn({ name: 'doctorId' })
   doctor: User;
   
@@ -39,30 +43,31 @@ export class Appointment {
 
   // WAVE slot
   @ManyToOne(() => CustomSlot, {
-    nullable: true,
-  })
-  @JoinColumn({ name: 'customSlotId' })
-  customSlot?: CustomSlot;
+  nullable: true,
+})
+@JoinColumn({ name: 'customSlotId' })
+customSlot: CustomSlot | null;
 
-  @ManyToOne(() => RecurringSlot, {
-    nullable: true,
-  })
-  @JoinColumn({ name: 'recurringSlotId' })
-  recurringSlot?: RecurringSlot;
 
-  // WAVE availability
+@ManyToOne(() => RecurringSlot, {
+  nullable: true,
+})
+@JoinColumn({ name: 'recurringSlotId' })
+recurringSlot: RecurringSlot | null;
 
-  @ManyToOne(() => CustomAvailability, {
-    nullable: true,
-  })
-  @JoinColumn({ name: 'customAvailabilityId' })
-  customAvailability?: CustomAvailability;
 
-  @ManyToOne(() => RecurringAvailability, {
-    nullable: true,
-  })
-  @JoinColumn({ name: 'recurringAvailabilityId' })
-  recurringAvailability?: RecurringAvailability;
+@ManyToOne(() => CustomAvailability, {
+  nullable: true,
+})
+@JoinColumn({ name: 'customAvailabilityId' })
+customAvailability: CustomAvailability | null;
+
+
+@ManyToOne(() => RecurringAvailability, {
+  nullable: true,
+})
+@JoinColumn({ name: 'recurringAvailabilityId' })
+recurringAvailability: RecurringAvailability | null;
 
   @Column({
     type: 'enum',
