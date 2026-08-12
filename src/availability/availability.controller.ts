@@ -36,8 +36,8 @@ export class AvailabilityController {
   }
 
   @Get()
-  getRecurring(@Req() req) {
-    return this.availabilityService.getRecurring(req.user);
+  async getAvailability(@Req() req) {
+    return this.availabilityService.getAvailability(req.user);
   }
 
   @Patch(':id')

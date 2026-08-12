@@ -1881,25 +1881,41 @@ if (outsideSlots.length > 0) {
     };
   }
 
-  async getRecurring(user: any) {
-    const doctor = await this.getDoctor(user);
+  async getAvailability(user: any) {
+  const doctor = await this.getDoctor(user);
 
-    const availability = await this.recurringRepository.find({
-      where: {
-        doctor: {
-          id: doctor.id,
-        },
+  // Fetch recurring availability
+  const recurringAvailability = await this.recurringRepository.find({
+    where: {
+      doctor: {
+        id: doctor.id,
       },
-      order: {
-        dayOfWeek: 'ASC',
-        startTime: 'ASC',
-      },
-    });
+    },
+    order: {
+      dayOfWeek: 'ASC',
+      startTime: 'ASC',
+    },
+  });
 
-    return {
-      message: 'Recurring availability fetched successfully.',
-      count: availability.length,
-      data: availability.map((slot) => ({
+  // Fetch custom availability
+  const customAvailability = await this.customRepository.find({
+    where: {
+      doctor: {
+        id: doctor.id,
+      },
+    },
+    order: {
+      date: 'ASC',
+      startTime: 'ASC',
+    },
+  });
+
+  return {
+    message: 'Availability fetched successfully.',
+    count: recurringAvailability.length + customAvailability.length,
+
+    data: {
+      recurring: recurringAvailability.map((slot) => ({
         id: slot.id,
         dayOfWeek: slot.dayOfWeek,
         schedulingType: slot.schedulingType,
@@ -1909,8 +1925,20 @@ if (outsideSlots.length > 0) {
         bufferTime: slot.bufferTime,
         maxCapacity: slot.maxCapacity,
       })),
-    };
-  }
+
+      custom: customAvailability.map((slot) => ({
+        id: slot.id,
+        date: slot.date,
+        schedulingType: slot.schedulingType,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        duration: slot.duration,
+        bufferTime: slot.bufferTime,
+        maxCapacity: slot.maxCapacity,
+      })),
+    },
+  };
+}
 
   async deleteRecurring(user: any, id: string) {
     const doctor = await this.getDoctor(user);

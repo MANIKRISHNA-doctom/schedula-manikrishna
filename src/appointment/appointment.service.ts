@@ -175,9 +175,8 @@ private async releaseOldBooking(
   await queryRunner.startTransaction();
 
   try {
-    // =========================================================
+    
     // PATIENT
-    // =========================================================
 
     const patient = await queryRunner.manager.findOne(User, {
       where: {
