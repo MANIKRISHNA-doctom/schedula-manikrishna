@@ -638,13 +638,19 @@ private async releaseOldBooking(
 
     await queryRunner.commitTransaction();
 
-    const appointmentTime =
+    const appointmentStartTime =
       savedAppointment.customSlot?.startTime ||
       savedAppointment.recurringSlot?.startTime ||
       savedAppointment.recurringAvailability?.startTime ||
       savedAppointment.customAvailability?.startTime;
+    
+      const appointmentEndTime = 
+       savedAppointment.customSlot?.endTime ||
+      savedAppointment.recurringSlot?.endTime ||
+      savedAppointment.recurringAvailability?.endTime ||
+      savedAppointment.customAvailability?.endTime;
 
-    if (!appointmentTime) {
+    if (!appointmentStartTime || !appointmentEndTime) {
     throw new Error('Appointment time could not be determined');
   }
 
@@ -653,20 +659,20 @@ private async releaseOldBooking(
     patient.fullName,
     doctor.fullName,
     savedAppointment.appointmentDate,
-    appointmentTime
+    appointmentStartTime
   );
 
     return {
       message: 'Appointment booked successfully.',
       data: {
         appointmentId: savedAppointment.id,
-        doctorId: doctor.id,
-        patientId: patient.id,
         appointmentDate:
           savedAppointment.appointmentDate,
         schedulingType:
           savedAppointment.schedulingType,
         status: savedAppointment.status,
+        appointmentStartTime,
+        appointmentEndTime
       },
     };
   } catch (error) {
@@ -980,36 +986,7 @@ private async releaseOldBooking(
         updated.id,
       );
 
-      await queryRunner.commitTransaction();
-
-        const appointmentTime =
-  updated.customSlot?.startTime ||
-  updated.recurringSlot?.startTime ||
-  updated.recurringAvailability?.startTime ||
-  updated.customAvailability?.startTime;
-
-if (!appointmentTime) {
-  throw new Error('Appointment time could not be determined');
-}
-
-      await this.mailService.sendAppointmentRescheduledMail(  
-  patient.email,
-  patient.fullName,
-  availability.doctor.fullName,
-  updated.appointmentDate,
-  appointmentTime,
-);
-
-      return {
-        message: 'Appointment rescheduled successfully.',
-        data: {
-          appointmentDate: updated.appointmentDate,
-          startTime: newSlot.startTime,
-          endTime: newSlot.endTime,
-          schedulingType: updated.schedulingType,
-          status: updated.status,
-        },
-      };
+      
     }
 
     /*
@@ -1115,36 +1092,6 @@ if (!appointmentTime) {
         updated.id,
       );
 
-      await queryRunner.commitTransaction();
-
-      const appointmentTime =
-  updated.customSlot?.startTime ||
-  updated.recurringSlot?.startTime ||
-  updated.recurringAvailability?.startTime ||
-  updated.customAvailability?.startTime;
-
-if (!appointmentTime) {
-  throw new Error('Appointment time could not be determined');
-}
-
-      await this.mailService.sendAppointmentRescheduledMail(  
-  patient.email,
-  patient.fullName,
-  availability.doctor.fullName,
-  updated.appointmentDate,
-  appointmentTime,
-);
-
-      return {
-        message: 'Appointment rescheduled successfully.',
-        data: {
-          appointmentDate: updated.appointmentDate,
-          startTime: newSlot.startTime,
-          endTime: newSlot.endTime,
-          schedulingType: updated.schedulingType,
-          status: updated.status,
-        },
-      };
     }
 
     /*
@@ -1283,37 +1230,7 @@ if (!appointmentTime) {
         updated.id,
       );
 
-      await queryRunner.commitTransaction();
-
-        const appointmentTime =
-  updated.customSlot?.startTime ||
-  updated.recurringSlot?.startTime ||
-  updated.recurringAvailability?.startTime ||
-  updated.customAvailability?.startTime;
-
-if (!appointmentTime) {
-  throw new Error('Appointment time could not be determined');
-}
-
-      await this.mailService.sendAppointmentRescheduledMail(  
-  patient.email,
-  patient.fullName,
-  availability.doctor.fullName,
-  updated.appointmentDate,
-  appointmentTime,
-);
-
-      return {
-        message: 'Appointment rescheduled successfully.',
-        data: {
-          appointmentDate: updated.appointmentDate,
-          timeWindow:
-            `${availability.startTime} - ${availability.endTime}`,
-          schedulingType: updated.schedulingType,
-          tokenNumber: updated.tokenNumber,
-          status: updated.status,
-        },
-      };
+      
     }
 
     /*
@@ -1446,42 +1363,45 @@ if (!appointmentTime) {
         notificationMessage,
         updated.id,
       );
-      await queryRunner.commitTransaction();
+    }
 
-        const appointmentTime =
-  updated.customSlot?.startTime ||
-  updated.recurringSlot?.startTime ||
-  updated.recurringAvailability?.startTime ||
-  updated.customAvailability?.startTime;
+    await queryRunner.commitTransaction();
 
-if (!appointmentTime) {
+        const appointmentStartTime =
+  appointment.customSlot?.startTime ||
+  appointment.recurringSlot?.startTime ||
+  appointment.recurringAvailability?.startTime ||
+  appointment.customAvailability?.startTime;
+
+   const appointmentEndTime =
+  appointment.customSlot?.endTime ||
+  appointment.recurringSlot?.endTime ||
+  appointment.recurringAvailability?.endTime ||
+  appointment.customAvailability?.endTime;
+
+if (!appointmentStartTime || !appointmentEndTime) {
   throw new Error('Appointment time could not be determined');
 }
 
       await this.mailService.sendAppointmentRescheduledMail(  
   patient.email,
   patient.fullName,
-  availability.doctor.fullName,
-  updated.appointmentDate,
-  appointmentTime,
+  appointment.doctor.fullName,
+  appointment.appointmentDate,
+  appointmentStartTime,
 );
 
       return {
         message: 'Appointment rescheduled successfully.',
         data: {
-          appointmentDate: updated.appointmentDate,
-          timeWindow:
-            `${availability.startTime} - ${availability.endTime}`,
-          schedulingType: updated.schedulingType,
-          tokenNumber: updated.tokenNumber,
-          status: updated.status,
+          appointmentDate: appointment.appointmentDate,
+          startTime: appointmentStartTime,
+          endTime: appointmentEndTime,
+          schedulingType: appointment.schedulingType,
+          status: appointment.status,
         },
       };
-    }
 
-    throw new BadRequestException(
-      'Invalid rescheduling request.',
-    );
   } catch (error) {
     if (queryRunner.isTransactionActive) {
       await queryRunner.rollbackTransaction();
@@ -1637,8 +1557,8 @@ if (!appointmentTime) {
         appointmentId: cancelled.id,
         appointmentDate: cancelled.appointmentDate,
         schedulingType: cancelled.schedulingType,
-        tokenNumber: cancelled.tokenNumber,
         status: cancelled.status,
+        appointmentStartTime : appointmentTime,
       },
     };
   } catch (error) {
