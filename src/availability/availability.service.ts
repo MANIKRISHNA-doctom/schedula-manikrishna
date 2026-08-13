@@ -1017,7 +1017,7 @@ export class AvailabilityService {
         await queryRunner.commitTransaction();
 
         return {
-          message: 'Custom availability shrinked successfully.',
+          message: 'Availability shrunk successfully.',
 
           data: {
             startTime: availability.startTime,
@@ -1141,7 +1141,7 @@ export class AvailabilityService {
           appointment.recurringAvailability = replacement.availability;
           appointment.recurringSlot = replacement.slot;
 
-          await queryRunner.manager.save(slot);
+          await queryRunner.manager.save(slot);                
         }
 
         appointment.appointmentDate = replacement.appointmentDate;
@@ -1204,13 +1204,15 @@ for (const slot of slotsToDelete) {
   const appointmentsUsingSlot =
     await appointmentRepository.find({
       where: {
-        recurringSlot: {
+        customSlot: {
           id: slot.id,
         },
       },
       relations: {
+        customSlot: true,
+        customAvailability: true,
         recurringSlot: true,
-        recurringAvailability: true,
+        recurringAvailability: true   
       },
     });
 
@@ -1223,8 +1225,8 @@ for (const slot of slotsToDelete) {
     }
 
     // CANCELLED / COMPLETED
-    appointment.recurringSlot = null;
-    appointment.recurringAvailability = null;
+    appointment.customSlot = null;
+    appointment.customAvailability = null;
 
     await appointmentRepository.save(appointment);
   }
@@ -1266,7 +1268,7 @@ if (slotsToDelete.length) {
       });
 
       return {
-        message: 'Availability shrinked successfully.',
+        message: 'Availability shrunk successfully.',
 
         windowStartTime: newStart,
 
@@ -1278,7 +1280,9 @@ if (slotsToDelete.length) {
         })),
       };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
 
       throw error;
     } finally {
@@ -1350,7 +1354,7 @@ if (slotsToDelete.length) {
         await queryRunner.commitTransaction();
 
         return {
-          message: 'Availability shrinked successfully.',
+          message: 'Availability shrunk successfully.',
           data: {
             startTime: newStart,
             endTime: newEnd,
@@ -1660,7 +1664,7 @@ if (outsideSlots.length > 0) {
       });
 
       return {
-        message: 'Availability shrinked successfully.',
+        message: 'Availability shrunk successfully.',
         window_startTime: newStart,
         window_endTime: newEnd,
         data: updatedSlots.map((slot) => ({

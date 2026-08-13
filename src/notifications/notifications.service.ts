@@ -156,6 +156,12 @@ export class NotificationsService {
         );
     }
 
+    if(notification.isRead === false){
+      throw new ForbiddenException(
+          'User not read the notification yet',
+        );
+    }
+    
     await this.notificationRepository.remove(notification);
 
     return {
