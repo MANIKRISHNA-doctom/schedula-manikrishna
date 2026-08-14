@@ -112,4 +112,42 @@ export class MailService {
       throw error;
     }
   }
+
+  //Send appointment reminder mail
+async sendAppointmentReminderMail(
+  email: string,
+  patientName: string,
+  doctorName: string,
+  appointmentDate: string | Date,
+  startTime: string,
+  schedulingType: string,
+  tokenNumber?: number,
+) {
+  let subject = 'Appointment Reminder';
+  let text = '';
+
+  if (schedulingType === 'STREAM') {
+    text =
+      `Hello ${patientName},\n\n` +
+      `Reminder: You have an appointment with Dr. ${doctorName}.\n` +
+      `Date: ${appointmentDate}\n` +
+      `Time: ${startTime}\n\n` +
+      `Thank you.`;
+  }
+
+  if (schedulingType === 'WAVE') {
+    text =
+      `Hello ${patientName},\n\n` +
+      `Reminder: You have an appointment with Dr. ${doctorName} today.\n` +
+      `Reporting Time: ${startTime}\n` +
+      `Token Number: ${tokenNumber}\n\n` +
+      `Thank you.`;
+  }
+
+  await this.mailerService.sendMail({
+    to: email,
+    subject,
+    text,
+  });
+}
 }

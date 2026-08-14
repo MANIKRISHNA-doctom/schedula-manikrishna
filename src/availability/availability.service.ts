@@ -635,7 +635,7 @@ export class AvailabilityService {
     if (availability.schedulingType === 'STREAM') {
       availability.startTime = newStart;
       availability.endTime = newEnd;
-
+      
       await this.recurringRepository.save(availability);
 
       return {
@@ -1918,29 +1918,31 @@ if (outsideSlots.length > 0) {
     message: 'Availability fetched successfully.',
     count: recurringAvailability.length + customAvailability.length,
 
-    data: {
-      recurring: recurringAvailability.map((slot) => ({
-        id: slot.id,
-        dayOfWeek: slot.dayOfWeek,
-        schedulingType: slot.schedulingType,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        duration: slot.duration,
-        bufferTime: slot.bufferTime,
-        maxCapacity: slot.maxCapacity,
-      })),
+    data: [
+  ...recurringAvailability.map((slot) => ({
+    id: slot.id,
+    dayOfWeek: slot.dayOfWeek,
+    date: null,
+    schedulingType: slot.schedulingType,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    duration: slot.duration,
+    bufferTime: slot.bufferTime,
+    maxCapacity: slot.maxCapacity,
+  })),
 
-      custom: customAvailability.map((slot) => ({
-        id: slot.id,
-        date: slot.date,
-        schedulingType: slot.schedulingType,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        duration: slot.duration,
-        bufferTime: slot.bufferTime,
-        maxCapacity: slot.maxCapacity,
-      })),
-    },
+  ...customAvailability.map((slot) => ({
+    id: slot.id,
+    dayOfWeek: null,
+    date: slot.date,
+    schedulingType: slot.schedulingType,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    duration: slot.duration,
+    bufferTime: slot.bufferTime,
+    maxCapacity: slot.maxCapacity,
+  })),
+],
   };
 }
 

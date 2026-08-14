@@ -30,6 +30,7 @@ export class Notification {
       'APPOINTMENT_BOOKED',
       'APPOINTMENT_CANCELLED',
       'APPOINTMENT_RESCHEDULED',
+      'APPOINTMENT_REMINDER'
     ],
   })
   type: string;

@@ -22,7 +22,7 @@ import { CreateAppointmentDto } from 'src/appointment/dto/create-appointment.dto
 export class PatientController {
   constructor(private readonly patientService: PatientService) {}
 
-  @Get('doctor/:doctorId/availability')
+  @Get(':doctorId/availability')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('PATIENT')
   getDoctorAvailability(
