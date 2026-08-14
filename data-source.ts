@@ -9,6 +9,7 @@ import { CustomAvailability } from './src/availability/custom-availability.entit
 import { CustomSlot } from './src/availability/custom-slot.entity';
 import { RecurringSlot } from './src/availability/recurring-slot.entity';
 import { Appointment } from './src/appointment/appointment.entity';
+import { Notification } from './src/notifications/notifications.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -28,6 +29,7 @@ export const AppDataSource = new DataSource({
     CustomSlot,
     RecurringSlot,
     Appointment,
+    Notification
   ],
 
   migrations: ['src/migrations/*.ts'],
