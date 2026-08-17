@@ -132,6 +132,7 @@ async sendAppointmentReminderMail(
       `Reminder: You have an appointment with Dr. ${doctorName}.\n` +
       `Date: ${appointmentDate}\n` +
       `Time: ${startTime}\n\n` +
+      `Token number : ${tokenNumber}\n`+
       `Thank you.`;
   }
 
@@ -140,7 +141,6 @@ async sendAppointmentReminderMail(
       `Hello ${patientName},\n\n` +
       `Reminder: You have an appointment with Dr. ${doctorName} today.\n` +
       `Reporting Time: ${startTime}\n` +
-      `Token Number: ${tokenNumber}\n\n` +
       `Thank you.`;
   }
 

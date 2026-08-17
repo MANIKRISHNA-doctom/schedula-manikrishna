@@ -38,6 +38,8 @@ export class AppointmentReminderService {
 
       now.setSeconds(0, 0);
 
+      const today = now.toISOString().split('T')[0];
+
       // Reminder window = 1 hour from now
       const reminderStart = new Date(
         now.getTime() + 60 * 60 * 1000,
@@ -54,6 +56,7 @@ export class AppointmentReminderService {
       const appointments = await appointmentRepository.find({
         where: {
           status: 'BOOKED',
+          appointmentDate : today
         },
         relations: {
           patient: true,
@@ -165,9 +168,9 @@ export class AppointmentReminderService {
     if (appointment.schedulingType === 'STREAM') {
       message =
         `Reminder: You have an appointment with ` +
-        `Dr. ${appointment.doctor.fullName} ` +
-        `on ${appointment.appointmentDate} ` +
-        `at ${startTime}.`;
+        `Dr. ${appointment.doctor.fullName} today.\n` +
+        `Reporting Time: ${startTime}\n` +
+        `Token Number: ${appointment.tokenNumber}`;
     }
 
     /*
@@ -176,9 +179,9 @@ export class AppointmentReminderService {
     else if (appointment.schedulingType === 'WAVE') {
       message =
         `Reminder: You have an appointment with ` +
-        `Dr. ${appointment.doctor.fullName} today.\n` +
-        `Reporting Time: ${startTime}\n` +
-        `Token Number: ${appointment.tokenNumber}`;
+        `Dr. ${appointment.doctor.fullName} ` +
+        `on ${appointment.appointmentDate} ` +
+        `at ${startTime}.`;
     }
 
     else {
