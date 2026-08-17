@@ -23,7 +23,7 @@ export class AppointmentReminderService {
   /**
    * Runs every 5 minutes.
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @Cron(CronExpression.EVERY_MINUTE)
   async sendAppointmentReminders() {
     this.logger.log('Checking upcoming appointments for reminders...');
 

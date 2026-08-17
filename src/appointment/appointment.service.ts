@@ -466,8 +466,8 @@ private async releaseOldBooking(
       const bookedCount =
         await queryRunner.manager.count(Appointment, {
           where: {
-            customSlot: {
-              id: slot.id,
+            customAvailability: {
+              id: availability.id,
             },
             appointmentDate: dto.appointmentDate,
             status: 'BOOKED',
