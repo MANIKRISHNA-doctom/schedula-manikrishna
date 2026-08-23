@@ -635,7 +635,7 @@ export class AvailabilityService {
     if (availability.schedulingType === 'STREAM') {
       availability.startTime = newStart;
       availability.endTime = newEnd;
-
+      
       await this.recurringRepository.save(availability);
 
       return {
@@ -1918,62 +1918,142 @@ if (outsideSlots.length > 0) {
     message: 'Availability fetched successfully.',
     count: recurringAvailability.length + customAvailability.length,
 
-    data: {
-      recurring: recurringAvailability.map((slot) => ({
-        id: slot.id,
-        dayOfWeek: slot.dayOfWeek,
-        schedulingType: slot.schedulingType,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        duration: slot.duration,
-        bufferTime: slot.bufferTime,
-        maxCapacity: slot.maxCapacity,
-      })),
+    data: [
+  ...recurringAvailability.map((slot) => ({
+    id: slot.id,
+    dayOfWeek: slot.dayOfWeek,
+    date: null,
+    schedulingType: slot.schedulingType,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    duration: slot.duration,
+    bufferTime: slot.bufferTime,
+    maxCapacity: slot.maxCapacity,
+  })),
 
-      custom: customAvailability.map((slot) => ({
-        id: slot.id,
-        date: slot.date,
-        schedulingType: slot.schedulingType,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        duration: slot.duration,
-        bufferTime: slot.bufferTime,
-        maxCapacity: slot.maxCapacity,
-      })),
-    },
+  ...customAvailability.map((slot) => ({
+    id: slot.id,
+    dayOfWeek: null,
+    date: slot.date,
+    schedulingType: slot.schedulingType,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    duration: slot.duration,
+    bufferTime: slot.bufferTime,
+    maxCapacity: slot.maxCapacity,
+  })),
+],
   };
 }
 
-  async deleteRecurring(user: any, id: string) {
+async deleteRecurring(user: any, id: string) {
+  const queryRunner = this.dataSource.createQueryRunner();
+
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
+
+  try {
     const doctor = await this.getDoctor(user);
 
-    const availability = await this.recurringRepository.findOne({
+    const availability = await queryRunner.manager.findOne(
+      this.recurringRepository.target,
+      {
+        where: {
+          id,
+          doctor: {
+            id: doctor.id,
+          },
+        },
+      },
+    );
+
+    if (!availability) {
+      throw new NotFoundException(
+        'Recurring availability not found.',
+      );
+    }
+
+    const appointmentRepository =
+      queryRunner.manager.getRepository(
+        this.appointmentRepository.target,
+      );
+
+    const recurringSlotRepository =
+      queryRunner.manager.getRepository(
+        this.recurringSlotRepository.target,
+      );
+
+    // Get all slots belonging to this availability
+    const slots = await recurringSlotRepository.find({
       where: {
-        id,
-        doctor: {
-          id: doctor.id,
+        availability: {
+          id: availability.id,
         },
       },
     });
 
-    if (!availability) {
-      throw new NotFoundException('Recurring availability not found.');
+    const slotIds = slots.map((slot) => slot.id);
+
+    if (slotIds.length > 0) {
+      // Find all appointments assigned to these recurring slots
+      const appointments = await appointmentRepository
+        .createQueryBuilder('appointment')
+        .leftJoinAndSelect(
+          'appointment.recurringSlot',
+          'recurringSlot',
+        )
+        .where(
+          'appointment.recurringSlotId IN (:...slotIds)',
+          { slotIds },
+        )
+        .getMany();
+
+      // Check for BOOKED appointments
+      const bookedAppointments = appointments.filter(
+        (appointment) => appointment.status === 'BOOKED',
+      );
+
+      if (bookedAppointments.length > 0) {
+        throw new BadRequestException(
+          'Cannot delete recurring availability because it has booked appointments.',
+        );
+      }
+
+      // Delete CANCELLED / COMPLETED appointments
+      const deletableAppointments = appointments.filter(
+        (appointment) =>
+          appointment.status === 'CANCELLED' ||
+          appointment.status === 'COMPLETED',
+      );
+
+      if (deletableAppointments.length > 0) {
+        await appointmentRepository.remove(
+          deletableAppointments,
+        );
+      }
+
+      // Delete recurring slots
+      await recurringSlotRepository.remove(slots);
     }
 
-    // Delete generated slots first
-    await this.recurringSlotRepository.delete({
-      availability: {
-        id: availability.id,
-      },
-    });
+    // Delete recurring availability
+    await queryRunner.manager.remove(availability);
 
-    // Delete availability
-    await this.recurringRepository.remove(availability);
+    await queryRunner.commitTransaction();
 
     return {
       message: 'Recurring availability deleted successfully.',
     };
+  } catch (error) {
+    if (queryRunner.isTransactionActive) {
+      await queryRunner.rollbackTransaction();
+    }
+
+    throw error;
+  } finally {
+    await queryRunner.release();
   }
+}
 
   async createOverride(user: any, dto: CreateCustomAvailabilityDto) {
     const doctor = await this.getDoctor(user);

@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DoctorModule } from './doctor/doctor.module';
@@ -11,9 +11,12 @@ import { AppointmentModule } from './appointment/appointment.module';
 import { ConfigModule } from '@nestjs/config';
 import { MailService } from './email/email.service';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AppointmentReminderModule } from './appointment-reminder/appointment-reminder.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
+    AppointmentReminderModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
